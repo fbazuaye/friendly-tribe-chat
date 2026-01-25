@@ -14,10 +14,13 @@ import {
   Edit2,
   Shield,
   Coins,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const menuItems = [
   {
@@ -29,9 +32,8 @@ const menuItems = [
   {
     icon: Coins,
     label: "Token Wallet",
-    description: "View balance and purchase tokens",
+    description: "View balance and usage history",
     path: "/profile/tokens",
-    badge: "1,250",
   },
   {
     icon: Bell,
@@ -68,8 +70,13 @@ const menuItems = [
 export default function Profile() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
+  const { role } = useUserRole();
 
-  const handleLogout = () => {
+  const isAdmin = role === "super_admin" || role === "admin";
+
+  const handleLogout = async () => {
+    await signOut();
     toast({
       title: "Logged out",
       description: "You have been logged out successfully",
@@ -112,6 +119,28 @@ export default function Profile() {
           <TokenBalance showTopUp onTopUp={() => navigate("/profile/tokens")} />
         </div>
 
+        {/* Admin Dashboard Link */}
+        {isAdmin && (
+          <button
+            onClick={() => navigate("/admin")}
+            className={cn(
+              "w-full flex items-center gap-4 p-4 rounded-xl transition-all mb-4",
+              "bg-gradient-primary text-white hover:opacity-90 active:scale-[0.98]"
+            )}
+          >
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+              <Settings2 className="w-5 h-5" />
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <span className="font-medium">Admin Dashboard</span>
+              <p className="text-sm text-white/80">
+                Manage tokens, users & organization
+              </p>
+            </div>
+            <ChevronRight className="w-5 h-5 flex-shrink-0" />
+          </button>
+        )}
+
         {/* Menu items */}
         <div className="space-y-2">
           {menuItems.map((item) => (
@@ -127,14 +156,7 @@ export default function Profile() {
                 <item.icon className="w-5 h-5 text-foreground" />
               </div>
               <div className="flex-1 text-left min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{item.label}</span>
-                  {item.badge && (
-                    <span className="token-pill text-xs py-0.5 px-2">
-                      {item.badge}
-                    </span>
-                  )}
-                </div>
+                <span className="font-medium">{item.label}</span>
                 <p className="text-sm text-muted-foreground truncate">
                   {item.description}
                 </p>

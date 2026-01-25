@@ -12,6 +12,7 @@ import Communities from "./pages/Communities";
 import Broadcasts from "./pages/Broadcasts";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
+import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,9 @@ const App = () => (
             
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/*" element={<Profile />} />
+            
+            {/* Admin routes */}
+            <Route path="/admin" element={<AdminDashboard />} />
             
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
