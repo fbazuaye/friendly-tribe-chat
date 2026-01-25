@@ -14,6 +14,219 @@ export type Database = {
   }
   public: {
     Tables: {
+      broadcast_channels: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_channels_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcast_messages: {
+        Row: {
+          channel_id: string
+          content: string
+          created_at: string
+          id: string
+          message_type: string
+          metadata: Json | null
+          sender_id: string
+        }
+        Insert: {
+          channel_id: string
+          content: string
+          created_at?: string
+          id?: string
+          message_type?: string
+          metadata?: Json | null
+          sender_id: string
+        }
+        Update: {
+          channel_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          message_type?: string
+          metadata?: Json | null
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "broadcast_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcast_subscribers: {
+        Row: {
+          channel_id: string
+          id: string
+          subscribed_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          subscribed_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          subscribed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_subscribers_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "broadcast_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_participants: {
+        Row: {
+          conversation_id: string
+          id: string
+          joined_at: string
+          last_read_at: string | null
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          id?: string
+          joined_at?: string
+          last_read_at?: string | null
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          id?: string
+          joined_at?: string
+          last_read_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_participants_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversations: {
+        Row: {
+          created_at: string
+          id: string
+          is_group: boolean | null
+          name: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_group?: boolean | null
+          name?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_group?: boolean | null
+          name?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          is_read: boolean | null
+          message_type: string
+          metadata: Json | null
+          sender_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          is_read?: boolean | null
+          message_type?: string
+          metadata?: Json | null
+          sender_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          is_read?: boolean | null
+          message_type?: string
+          metadata?: Json | null
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_wallets: {
         Row: {
           created_at: string
@@ -304,6 +517,18 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_channel_owner: {
+        Args: { _channel_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_channel_subscriber: {
+        Args: { _channel_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_conversation_participant: {
+        Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
       }
       is_org_admin: {
