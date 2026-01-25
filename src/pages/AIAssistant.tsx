@@ -53,14 +53,7 @@ export default function AIAssistant() {
   const { toast } = useToast();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content:
-        "Hi! I'm your Pulse AI assistant. I can help you with community management, moderation, writing messages, and more. Each interaction uses tokens from your balance. How can I help you today?",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -75,14 +68,13 @@ export default function AIAssistant() {
     setInput("");
     setIsLoading(true);
 
-    // Simulate AI response
+    // TODO: Integrate with actual AI backend
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     const aiMessage: Message = {
       id: (Date.now() + 1).toString(),
       role: "assistant",
-      content:
-        "I'd be happy to help with that! Based on your community's activity, here are some suggestions:\n\n1. **Engagement tip**: Post during peak hours (7-9 PM) for maximum visibility\n2. **Content idea**: Host a weekly Q&A session\n3. **Growth strategy**: Invite members to share with friends\n\nWould you like me to elaborate on any of these?",
+      content: "AI functionality will be available once integrated with the backend. This is a placeholder response.",
     };
 
     setMessages((prev) => [...prev, aiMessage]);
@@ -114,73 +106,90 @@ export default function AIAssistant() {
         </header>
 
         {/* Features grid (shown when no conversation) */}
-        {messages.length === 1 && (
-          <div className="p-4 grid grid-cols-2 gap-3">
-            {aiFeatures.map((feature) => (
-              <button
-                key={feature.title}
-                className={cn(
-                  "p-4 rounded-xl text-left transition-all",
-                  "bg-card border border-border/50",
-                  "hover:border-primary/50 hover:bg-primary/5"
-                )}
-              >
-                <feature.icon className="w-8 h-8 text-primary mb-3" />
-                <h3 className="font-medium text-sm mb-1">{feature.title}</h3>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {feature.description}
-                </p>
-                <span className="text-xs text-primary font-medium">
-                  {feature.tokens} tokens
-                </span>
-              </button>
-            ))}
+        {messages.length === 0 && (
+          <div className="p-4 space-y-4">
+            <div className="text-center py-8">
+              <div className="w-16 h-16 rounded-full bg-gradient-primary mx-auto flex items-center justify-center mb-4">
+                <Bot className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="font-semibold text-lg mb-2">Welcome to AI Assistant</h2>
+              <p className="text-sm text-muted-foreground">
+                I can help you with community management, moderation, and more.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              {aiFeatures.map((feature) => (
+                <button
+                  key={feature.title}
+                  className={cn(
+                    "p-4 rounded-xl text-left transition-all",
+                    "bg-card border border-border/50",
+                    "hover:border-primary/50 hover:bg-primary/5"
+                  )}
+                >
+                  <feature.icon className="w-8 h-8 text-primary mb-3" />
+                  <h3 className="font-medium text-sm mb-1">{feature.title}</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {feature.description}
+                  </p>
+                  <span className="text-xs text-primary font-medium">
+                    {feature.tokens} tokens
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={cn(
-                "flex gap-3 max-w-[90%] animate-fade-in",
-                message.role === "user" ? "ml-auto flex-row-reverse" : ""
-              )}
-            >
-              {message.role === "assistant" && (
+        {messages.length > 0 && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={cn(
+                  "flex gap-3 max-w-[90%] animate-fade-in",
+                  message.role === "user" ? "ml-auto flex-row-reverse" : ""
+                )}
+              >
+                {message.role === "assistant" && (
+                  <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-4 h-4 text-white" />
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    "px-4 py-3 rounded-2xl",
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-br-md"
+                      : "bg-card border border-border/50 rounded-bl-md"
+                  )}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                </div>
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex gap-3 animate-fade-in">
                 <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0">
                   <Bot className="w-4 h-4 text-white" />
                 </div>
-              )}
-              <div
-                className={cn(
-                  "px-4 py-3 rounded-2xl",
-                  message.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-md"
-                    : "bg-card border border-border/50 rounded-bl-md"
-                )}
-              >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-              </div>
-            </div>
-          ))}
-
-          {isLoading && (
-            <div className="flex gap-3 animate-fade-in">
-              <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0">
-                <Bot className="w-4 h-4 text-white" />
-              </div>
-              <div className="px-4 py-3 bg-card border border-border/50 rounded-2xl rounded-bl-md">
-                <div className="flex gap-1">
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
+                <div className="px-4 py-3 bg-card border border-border/50 rounded-2xl rounded-bl-md">
+                  <div className="flex gap-1">
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+
+        {/* Spacer when no messages */}
+        {messages.length === 0 && <div className="flex-1" />}
 
         {/* Input */}
         <div className="p-4 border-t border-border bg-card">
