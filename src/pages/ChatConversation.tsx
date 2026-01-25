@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { MessageComposer } from "@/components/chat/MessageComposer";
+import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import {
   ArrowLeft,
   Phone,
@@ -25,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useConversation } from "@/hooks/useConversations";
 import { useMessages, useSendMessage } from "@/hooks/useMessages";
 import { useAuth } from "@/hooks/useAuth";
+import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { format, isToday, isYesterday } from "date-fns";
 
 export default function ChatConversation() {
@@ -37,8 +39,14 @@ export default function ChatConversation() {
   const { data: conversation, isLoading: convLoading } = useConversation(id);
   const { data: messages = [], isLoading: msgsLoading } = useMessages(id);
   const sendMessage = useSendMessage();
+  const { typingUsers, setTyping, clearTyping } = useTypingIndicator(id);
 
   const isLoading = convLoading || msgsLoading;
+
+  // Get current user's display name for typing indicator
+  const currentUserProfile = conversation?.participants.find(
+    (p) => p.user_id === user?.id
+  );
 
   // Get other participant for 1:1 chats
   const otherParticipant = conversation?.participants.find(
@@ -61,6 +69,9 @@ export default function ChatConversation() {
 
   const handleSendMessage = async (content: string) => {
     if (!id) return;
+
+    // Clear typing indicator when sending
+    clearTyping();
 
     try {
       await sendMessage.mutateAsync({
@@ -223,9 +234,13 @@ export default function ChatConversation() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Typing Indicator */}
+      <TypingIndicator typingUsers={typingUsers} />
+
       {/* Composer */}
       <MessageComposer
         onSend={handleSendMessage}
+        onTyping={() => setTyping(currentUserProfile?.profile?.display_name)}
         disabled={sendMessage.isPending}
         placeholder={sendMessage.isPending ? "Sending..." : "Type a message..."}
       />

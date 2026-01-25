@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { NotificationPrompt } from "@/components/notifications/NotificationPrompt";
 import Welcome from "./pages/Welcome";
 import Auth from "./pages/Auth";
 import Chats from "./pages/Chats";
@@ -51,6 +52,7 @@ const App = () => (
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <NotificationPrompt />
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

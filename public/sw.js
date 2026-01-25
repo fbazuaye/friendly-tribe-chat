@@ -65,6 +65,25 @@ async function syncMessages() {
   console.log('Syncing messages...');
 }
 
+// Handle messages from the app for showing notifications
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, body, icon, badge, tag, data } = event.data.payload;
+    self.registration.showNotification(title, {
+      body,
+      icon: icon || '/icon-192.png',
+      badge: badge || '/icon-192.png',
+      vibrate: [100, 50, 100],
+      tag,
+      data,
+      actions: [
+        { action: 'open', title: 'Open' },
+        { action: 'close', title: 'Close' }
+      ]
+    });
+  }
+});
+
 // Push notifications
 self.addEventListener('push', (event) => {
   if (!event.data) return;
