@@ -109,7 +109,7 @@ export default function Profile() {
           </div>
           <p className="text-sm text-muted-foreground mb-4">john.doe@example.com</p>
           
-          <TokenBalance balance={1250} showTopUp onTopUp={() => navigate("/profile/tokens")} />
+          <TokenBalance showTopUp onTopUp={() => navigate("/profile/tokens")} />
         </div>
 
         {/* Menu items */}

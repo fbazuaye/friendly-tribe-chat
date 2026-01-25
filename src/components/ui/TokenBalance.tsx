@@ -1,9 +1,10 @@
 import { cn } from "@/lib/utils";
 import { Coins, Plus } from "lucide-react";
 import { Button } from "./button";
+import { useTokenBalance } from "@/hooks/useTokenBalance";
+import { Skeleton } from "./skeleton";
 
 interface TokenBalanceProps {
-  balance: number;
   onTopUp?: () => void;
   size?: "sm" | "md" | "lg";
   showTopUp?: boolean;
@@ -23,13 +24,21 @@ const iconSizes = {
 };
 
 export function TokenBalance({
-  balance,
   onTopUp,
   size = "md",
   showTopUp = false,
   className,
 }: TokenBalanceProps) {
+  const { balance, loading } = useTokenBalance();
   const formattedBalance = balance.toLocaleString();
+
+  if (loading) {
+    return (
+      <div className={cn("flex items-center gap-2", className)}>
+        <Skeleton className={cn("h-7 w-16 rounded-full", sizeStyles[size])} />
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex items-center gap-2", className)}>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,113 +8,130 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   ArrowLeft, 
   Mail, 
-  Phone, 
   Lock, 
   Eye, 
   EyeOff, 
-  Sparkles,
   ArrowRight,
-  Loader2
+  Loader2,
+  User
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { z } from "zod";
+
+const emailSchema = z.string().email("Please enter a valid email address");
+const passwordSchema = z.string().min(8, "Password must be at least 8 characters");
 
 export default function Auth() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading, signIn, signUp } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [authMethod, setAuthMethod] = useState<"email" | "phone">("email");
   
   // Form states
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  const handleEmailAuth = async (isSignUp: boolean) => {
-    if (!email || !password) {
-      toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    // Simulate auth - will be replaced with real Lovable Cloud auth
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    toast({
-      title: isSignUp ? "Account created!" : "Welcome back!",
-      description: "Redirecting to your chats...",
-    });
-    
-    setIsLoading(false);
-    navigate("/chats");
-  };
-
-  const handlePhoneAuth = async () => {
-    if (!phone) {
-      toast({
-        title: "Phone required",
-        description: "Please enter your phone number",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    if (!otpSent) {
-      setOtpSent(true);
-      toast({
-        title: "OTP Sent!",
-        description: "Check your phone for the verification code",
-      });
-    } else {
-      if (otp.length !== 6) {
-        toast({
-          title: "Invalid OTP",
-          description: "Please enter the 6-digit code",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-      toast({
-        title: "Verified!",
-        description: "Redirecting to your chats...",
-      });
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!authLoading && user) {
       navigate("/chats");
     }
-    
-    setIsLoading(false);
+  }, [user, authLoading, navigate]);
+
+  const validateForm = (isSignUp: boolean): boolean => {
+    const newErrors: { email?: string; password?: string } = {};
+
+    const emailResult = emailSchema.safeParse(email);
+    if (!emailResult.success) {
+      newErrors.email = emailResult.error.errors[0].message;
+    }
+
+    const passwordResult = passwordSchema.safeParse(password);
+    if (!passwordResult.success) {
+      newErrors.password = passwordResult.error.errors[0].message;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleMagicLink = async () => {
-    if (!email) {
-      toast({
-        title: "Email required",
-        description: "Please enter your email address",
-        variant: "destructive",
-      });
+  const handleEmailAuth = async (isSignUp: boolean) => {
+    if (!validateForm(isSignUp)) {
       return;
     }
 
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
     
-    toast({
-      title: "Magic link sent!",
-      description: "Check your email to sign in",
-    });
-    
-    setIsLoading(false);
+    try {
+      if (isSignUp) {
+        const { error } = await signUp(email, password, displayName || undefined);
+        
+        if (error) {
+          // Handle specific error messages
+          if (error.message.includes("already registered")) {
+            toast({
+              title: "Account exists",
+              description: "This email is already registered. Try signing in instead.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Sign up failed",
+              description: error.message,
+              variant: "destructive",
+            });
+          }
+          return;
+        }
+        
+        toast({
+          title: "Account created!",
+          description: "Welcome to Pulse Community!",
+        });
+        navigate("/chats");
+      } else {
+        const { error } = await signIn(email, password);
+        
+        if (error) {
+          if (error.message.includes("Invalid login")) {
+            toast({
+              title: "Invalid credentials",
+              description: "Please check your email and password.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Sign in failed",
+              description: error.message,
+              variant: "destructive",
+            });
+          }
+          return;
+        }
+        
+        toast({
+          title: "Welcome back!",
+          description: "Redirecting to your chats...",
+        });
+        navigate("/chats");
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -143,211 +160,42 @@ export default function Auth() {
               <TabsTrigger value="signup">Sign up</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="signin" className="space-y-6">
-              {/* Auth method toggle */}
-              <div className="flex gap-2 p-1 bg-secondary rounded-xl">
-                <button
-                  onClick={() => setAuthMethod("email")}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg transition-all",
-                    authMethod === "email"
-                      ? "bg-background shadow-soft text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Mail className="w-4 h-4" />
-                  <span className="text-sm font-medium">Email</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setAuthMethod("phone");
-                    setOtpSent(false);
-                  }}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg transition-all",
-                    authMethod === "phone"
-                      ? "bg-background shadow-soft text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Phone className="w-4 h-4" />
-                  <span className="text-sm font-medium">Phone</span>
-                </button>
-              </div>
-
-              {authMethod === "email" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <Button
-                    className="w-full bg-gradient-primary hover:opacity-90"
-                    onClick={() => handleEmailAuth(false)}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        Sign in
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
-                    )}
-                  </Button>
-
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">or</span>
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    className="w-full gap-2"
-                    onClick={handleMagicLink}
-                    disabled={isLoading}
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    Send magic link
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="phone"
-                        type="tel"
-                        placeholder="+1 234 567 8900"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="pl-10"
-                        disabled={otpSent}
-                      />
-                    </div>
-                  </div>
-
-                  {otpSent && (
-                    <div className="space-y-2 animate-fade-in">
-                      <Label htmlFor="otp">Verification code</Label>
-                      <Input
-                        id="otp"
-                        type="text"
-                        placeholder="123456"
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        className="text-center text-2xl tracking-[0.5em] font-mono"
-                        maxLength={6}
-                      />
-                    </div>
-                  )}
-
-                  <Button
-                    className="w-full bg-gradient-primary hover:opacity-90"
-                    onClick={handlePhoneAuth}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : otpSent ? (
-                      <>
-                        Verify code
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
-                    ) : (
-                      <>
-                        Send OTP
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
-                    )}
-                  </Button>
-
-                  {otpSent && (
-                    <Button
-                      variant="ghost"
-                      className="w-full"
-                      onClick={() => {
-                        setOtpSent(false);
-                        setOtp("");
-                      }}
-                    >
-                      Change phone number
-                    </Button>
-                  )}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="signup" className="space-y-4">
+            <TabsContent value="signin" className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="signup-email">Email</Label>
+                <Label htmlFor="email">Email</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    id="signup-email"
+                    id="email"
                     type="email"
                     placeholder="you@example.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setErrors((prev) => ({ ...prev, email: undefined }));
+                    }}
+                    className={cn("pl-10", errors.email && "border-destructive")}
                   />
                 </div>
+                {errors.email && (
+                  <p className="text-xs text-destructive">{errors.email}</p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="signup-password">Create password</Label>
+                <Label htmlFor="password">Password</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    id="signup-password"
+                    id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="At least 8 characters"
+                    placeholder="••••••••"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setErrors((prev) => ({ ...prev, password: undefined }));
+                    }}
+                    className={cn("pl-10 pr-10", errors.password && "border-destructive")}
                   />
                   <button
                     type="button"
@@ -361,6 +209,94 @@ export default function Auth() {
                     )}
                   </button>
                 </div>
+                {errors.password && (
+                  <p className="text-xs text-destructive">{errors.password}</p>
+                )}
+              </div>
+
+              <Button
+                className="w-full bg-gradient-primary hover:opacity-90"
+                onClick={() => handleEmailAuth(false)}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    Sign in
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            </TabsContent>
+
+            <TabsContent value="signup" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="signup-name">Display name (optional)</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="signup-name"
+                    type="text"
+                    placeholder="Your name"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="signup-email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="signup-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setErrors((prev) => ({ ...prev, email: undefined }));
+                    }}
+                    className={cn("pl-10", errors.email && "border-destructive")}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="text-xs text-destructive">{errors.email}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="signup-password">Create password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="signup-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="At least 8 characters"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setErrors((prev) => ({ ...prev, password: undefined }));
+                    }}
+                    className={cn("pl-10 pr-10", errors.password && "border-destructive")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="text-xs text-destructive">{errors.password}</p>
+                )}
               </div>
 
               <Button
@@ -384,7 +320,7 @@ export default function Auth() {
             </TabsContent>
           </Tabs>
 
-          {/* Social auth */}
+          {/* Social auth placeholder */}
           <div className="mt-8 space-y-4">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -392,13 +328,13 @@ export default function Auth() {
               </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-background px-2 text-muted-foreground">
-                  Continue with
+                  Coming soon
                 </span>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2" disabled>
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
                     fill="currentColor"
@@ -419,7 +355,7 @@ export default function Auth() {
                 </svg>
                 Google
               </Button>
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2" disabled>
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
                 </svg>

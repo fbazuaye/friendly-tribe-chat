@@ -109,7 +109,7 @@ export default function AIAssistant() {
                 <p className="text-xs text-muted-foreground">Powered by Lovable AI</p>
               </div>
             </div>
-            <TokenBalance balance={1250} size="sm" />
+            <TokenBalance size="sm" />
           </div>
         </header>
 
