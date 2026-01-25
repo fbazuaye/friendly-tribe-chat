@@ -124,7 +124,7 @@ export default function Welcome() {
 
         {/* Footer */}
         <footer className="text-center text-xs text-muted-foreground pb-8 pb-safe-bottom">
-          <p>© 2025 Pulse Community. All rights reserved.</p>
+          <p>Designed by Frank Bazuaye · Powered by LiveGig Ltd</p>
         </footer>
       </div>
     </div>
