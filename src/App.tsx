@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { PresenceProvider } from "@/hooks/useUserPresence";
 import { NotificationPrompt } from "@/components/notifications/NotificationPrompt";
 import Welcome from "./pages/Welcome";
 import Auth from "./pages/Auth";
@@ -21,40 +22,42 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<Welcome />} />
-            <Route path="/auth" element={<Auth />} />
-            
-            {/* Main app routes */}
-            <Route path="/chats" element={<Chats />} />
-            <Route path="/chat/:id" element={<ChatConversation />} />
-            <Route path="/chat/new" element={<ChatConversation />} />
-            
-            <Route path="/communities" element={<Communities />} />
-            <Route path="/community/:id" element={<Communities />} />
-            
-            <Route path="/broadcasts" element={<Broadcasts />} />
-            <Route path="/broadcast/:id" element={<Broadcasts />} />
-            
-            <Route path="/ai" element={<AIAssistant />} />
-            
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/*" element={<Profile />} />
-            
-            {/* Admin routes */}
-            <Route path="/admin" element={<AdminDashboard />} />
-            
-            {/* Catch-all */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <NotificationPrompt />
-        </BrowserRouter>
-      </TooltipProvider>
+      <PresenceProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<Welcome />} />
+              <Route path="/auth" element={<Auth />} />
+              
+              {/* Main app routes */}
+              <Route path="/chats" element={<Chats />} />
+              <Route path="/chat/:id" element={<ChatConversation />} />
+              <Route path="/chat/new" element={<ChatConversation />} />
+              
+              <Route path="/communities" element={<Communities />} />
+              <Route path="/community/:id" element={<Communities />} />
+              
+              <Route path="/broadcasts" element={<Broadcasts />} />
+              <Route path="/broadcast/:id" element={<Broadcasts />} />
+              
+              <Route path="/ai" element={<AIAssistant />} />
+              
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/*" element={<Profile />} />
+              
+              {/* Admin routes */}
+              <Route path="/admin" element={<AdminDashboard />} />
+              
+              {/* Catch-all */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <NotificationPrompt />
+          </BrowserRouter>
+        </TooltipProvider>
+      </PresenceProvider>
     </AuthProvider>
   </QueryClientProvider>
 );
