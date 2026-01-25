@@ -14,6 +14,7 @@ import {
 
 interface MessageComposerProps {
   onSend: (message: string) => void;
+  onTyping?: () => void;
   onAttachmentClick?: () => void;
   onVoiceNote?: () => void;
   placeholder?: string;
@@ -27,6 +28,7 @@ interface MessageComposerProps {
 
 export function MessageComposer({
   onSend,
+  onTyping,
   onAttachmentClick,
   onVoiceNote,
   placeholder = "Type a message...",
@@ -61,6 +63,9 @@ export function MessageComposer({
     const target = e.target;
     target.style.height = "auto";
     target.style.height = Math.min(target.scrollHeight, 120) + "px";
+    
+    // Trigger typing indicator
+    onTyping?.();
   };
 
   const attachmentOptions = [
