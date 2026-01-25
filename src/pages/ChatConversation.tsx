@@ -148,10 +148,7 @@ export default function ChatConversation() {
           <ArrowLeft className="w-5 h-5" />
         </Button>
 
-        <button
-          className="flex items-center gap-3 flex-1 min-w-0"
-          onClick={() => navigate(`/chat/${id}/info`)}
-        >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="relative">
             <Avatar className="w-10 h-10">
               <AvatarImage src={chatInfo.avatar} />
@@ -167,7 +164,7 @@ export default function ChatConversation() {
             <h2 className="font-semibold truncate">{chatInfo.name}</h2>
             <p className="text-xs text-muted-foreground">{chatInfo.lastSeen}</p>
           </div>
-        </button>
+        </div>
 
         <div className="flex items-center">
           <Button variant="ghost" size="icon">
@@ -183,10 +180,6 @@ export default function ChatConversation() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => navigate(`/chat/${id}/info`)}>
-                <Info className="w-4 h-4 mr-2" />
-                Contact info
-              </DropdownMenuItem>
               <DropdownMenuItem>
                 <Search className="w-4 h-4 mr-2" />
                 Search

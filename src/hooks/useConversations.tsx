@@ -149,6 +149,8 @@ export function useConversation(conversationId: string | undefined) {
         .select("id, display_name, avatar_url, last_seen_at")
         .in("id", participantIds);
 
+      console.log("Fetched profiles for conversation:", conversationId, profiles);
+
       const profileMap = new Map(
         (profiles || []).map((p) => [p.id, p])
       );
