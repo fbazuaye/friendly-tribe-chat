@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,6 +13,7 @@ import {
   Info,
   Sparkles,
   MessageSquare,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -21,31 +22,34 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-
-interface ChatMessage {
-  id: string;
-  content: string;
-  timestamp: string;
-  isSent: boolean;
-  isRead: boolean;
-  isDelivered?: boolean;
-  senderName?: string;
-  reactions?: Array<{ emoji: string; count: number }>;
-  replyTo?: { name: string; content: string };
-}
+import { useConversation } from "@/hooks/useConversations";
+import { useMessages, useSendMessage } from "@/hooks/useMessages";
+import { useAuth } from "@/hooks/useAuth";
+import { format, isToday, isYesterday } from "date-fns";
 
 export default function ChatConversation() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
+  const { user } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [replyingTo, setReplyingTo] = useState<{ name: string; content: string } | null>(null);
 
-  // Chat info would come from database
+  const { data: conversation, isLoading: convLoading } = useConversation(id);
+  const { data: messages = [], isLoading: msgsLoading } = useMessages(id);
+  const sendMessage = useSendMessage();
+
+  const isLoading = convLoading || msgsLoading;
+
+  // Get other participant for 1:1 chats
+  const otherParticipant = conversation?.participants.find(
+    (p) => p.user_id !== user?.id
+  );
+
   const chatInfo = {
-    name: "New Conversation",
-    avatar: "",
+    name: conversation?.is_group
+      ? conversation.name || "Group Chat"
+      : otherParticipant?.profile?.display_name || "Unknown",
+    avatar: otherParticipant?.profile?.avatar_url || "",
     isOnline: false,
     lastSeen: "Offline",
   };
@@ -55,28 +59,22 @@ export default function ChatConversation() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = (content: string) => {
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      content,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      isSent: true,
-      isRead: false,
-      isDelivered: false,
-      ...(replyingTo && { replyTo: replyingTo }),
-    };
-    
-    setMessages((prev) => [...prev, newMessage]);
-    setReplyingTo(null);
+  const handleSendMessage = async (content: string) => {
+    if (!id) return;
 
-    // Simulate delivery after 1s
-    setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === newMessage.id ? { ...m, isDelivered: true } : m
-        )
-      );
-    }, 1000);
+    try {
+      await sendMessage.mutateAsync({
+        conversationId: id,
+        content,
+        messageType: "text",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to send message",
+        description: error instanceof Error ? error.message : "Please try again",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAISummary = () => {
@@ -85,6 +83,38 @@ export default function ChatConversation() {
       description: "Generating conversation summary... This will cost 15 tokens.",
     });
   };
+
+  const formatMessageDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    if (isToday(date)) return "Today";
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "MMMM d, yyyy");
+  };
+
+  const groupMessagesByDate = () => {
+    const groups: { date: string; messages: typeof messages }[] = [];
+    let currentDate = "";
+
+    messages.forEach((msg) => {
+      const msgDate = formatMessageDate(msg.created_at);
+      if (msgDate !== currentDate) {
+        currentDate = msgDate;
+        groups.push({ date: msgDate, messages: [msg] });
+      } else {
+        groups[groups.length - 1].messages.push(msg);
+      }
+    });
+
+    return groups;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-screen bg-background items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -160,30 +190,44 @@ export default function ChatConversation() {
           </div>
         ) : (
           <>
-            {/* Date separator */}
-            <div className="flex justify-center">
-              <span className="px-3 py-1 text-xs text-muted-foreground bg-secondary rounded-full">
-                Today
-              </span>
-            </div>
+            {groupMessagesByDate().map((group) => (
+              <div key={group.date}>
+                {/* Date separator */}
+                <div className="flex justify-center mb-4">
+                  <span className="px-3 py-1 text-xs text-muted-foreground bg-secondary rounded-full">
+                    {group.date}
+                  </span>
+                </div>
 
-            {messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                {...message}
-              />
+                {group.messages.map((message) => (
+                  <MessageBubble
+                    key={message.id}
+                    id={message.id}
+                    content={message.content}
+                    timestamp={format(new Date(message.created_at), "h:mm a")}
+                    isSent={message.sender_id === user?.id}
+                    isRead={message.is_read}
+                    isDelivered={true}
+                    senderName={
+                      conversation?.is_group && message.sender_id !== user?.id
+                        ? message.sender?.display_name || "Unknown"
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
             ))}
           </>
         )}
-        
+
         <div ref={messagesEndRef} />
       </div>
 
       {/* Composer */}
       <MessageComposer
         onSend={handleSendMessage}
-        replyingTo={replyingTo ?? undefined}
-        onCancelReply={() => setReplyingTo(null)}
+        disabled={sendMessage.isPending}
+        placeholder={sendMessage.isPending ? "Sending..." : "Type a message..."}
       />
     </div>
   );

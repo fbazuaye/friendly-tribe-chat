@@ -1,1 +1,10 @@
 project_id = "kltcbmrzukvjxqkfzbas"
+
+[functions.allocate-tokens]
+verify_jwt = false
+
+[functions.consume-tokens]
+verify_jwt = false
+
+[functions.send-message]
+verify_jwt = false

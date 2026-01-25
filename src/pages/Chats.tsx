@@ -4,32 +4,48 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ChatListItem } from "@/components/chat/ChatListItem";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { TokenBalance } from "@/components/ui/TokenBalance";
+import { UserPicker } from "@/components/chat/UserPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, PenSquare, Bell, MessageSquare } from "lucide-react";
+import { Search, PenSquare, Bell, MessageSquare, Loader2 } from "lucide-react";
+import { useConversations } from "@/hooks/useConversations";
+import { useAuth } from "@/hooks/useAuth";
+import { formatDistanceToNow } from "date-fns";
 
 export default function Chats() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showUserPicker, setShowUserPicker] = useState(false);
+  const { data: conversations = [], isLoading } = useConversations();
 
-  // Empty state - no mock data
-  const chats: Array<{
-    id: string;
-    name: string;
-    avatar: string;
-    lastMessage: string;
-    timestamp: string;
-    unreadCount?: number;
-    isOnline?: boolean;
-    isRead?: boolean;
-    isGroup?: boolean;
-    isTyping?: boolean;
-    isMuted?: boolean;
-  }> = [];
+  const filteredChats = conversations.filter((conv) => {
+    const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
+    const name = conv.is_group 
+      ? conv.name 
+      : otherParticipant?.profile?.display_name || "Unknown";
+    return name?.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
-  const filteredChats = chats.filter((chat) =>
-    chat.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const getChatDisplayInfo = (conv: typeof conversations[0]) => {
+    const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
+    
+    return {
+      id: conv.id,
+      name: conv.is_group 
+        ? conv.name || "Group Chat"
+        : otherParticipant?.profile?.display_name || "Unknown",
+      avatar: otherParticipant?.profile?.avatar_url || "",
+      lastMessage: conv.last_message?.content || "No messages yet",
+      timestamp: conv.last_message 
+        ? formatDistanceToNow(new Date(conv.last_message.created_at), { addSuffix: true })
+        : "",
+      unreadCount: conv.unread_count || 0,
+      isOnline: false,
+      isRead: conv.unread_count === 0,
+      isGroup: conv.is_group,
+    };
+  };
 
   return (
     <AppLayout>
@@ -60,15 +76,22 @@ export default function Chats() {
       </header>
 
       {/* Chat list */}
-      {filteredChats.length > 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : filteredChats.length > 0 ? (
         <div className="divide-y divide-border/50">
-          {filteredChats.map((chat) => (
-            <ChatListItem
-              key={chat.id}
-              {...chat}
-              onClick={() => navigate(`/chat/${chat.id}`)}
-            />
-          ))}
+          {filteredChats.map((conv) => {
+            const displayInfo = getChatDisplayInfo(conv);
+            return (
+              <ChatListItem
+                key={conv.id}
+                {...displayInfo}
+                onClick={() => navigate(`/chat/${conv.id}`)}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
@@ -86,10 +109,16 @@ export default function Chats() {
       <Button
         size="icon"
         className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-gradient-primary hover:opacity-90 shadow-glow z-40"
-        onClick={() => navigate("/chat/new")}
+        onClick={() => setShowUserPicker(true)}
       >
         <PenSquare className="w-6 h-6" />
       </Button>
+
+      {/* User picker dialog */}
+      <UserPicker 
+        open={showUserPicker} 
+        onOpenChange={setShowUserPicker} 
+      />
 
       {/* Install prompt */}
       <InstallPrompt />
