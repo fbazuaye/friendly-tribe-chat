@@ -301,6 +301,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          last_seen_at: string | null
           organization_id: string | null
           phone: string | null
           updated_at: string
@@ -310,6 +311,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          last_seen_at?: string | null
           organization_id?: string | null
           phone?: string | null
           updated_at?: string
@@ -319,6 +321,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          last_seen_at?: string | null
           organization_id?: string | null
           phone?: string | null
           updated_at?: string

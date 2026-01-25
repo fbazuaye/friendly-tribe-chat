@@ -27,13 +27,15 @@ import { useConversation } from "@/hooks/useConversations";
 import { useMessages, useSendMessage } from "@/hooks/useMessages";
 import { useAuth } from "@/hooks/useAuth";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
-import { format, isToday, isYesterday } from "date-fns";
+import { usePresence } from "@/hooks/useUserPresence";
+import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 
 export default function ChatConversation() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { isUserOnline } = usePresence();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: conversation, isLoading: convLoading } = useConversation(id);
@@ -53,13 +55,24 @@ export default function ChatConversation() {
     (p) => p.user_id !== user?.id
   );
 
+  const isOnline = otherParticipant ? isUserOnline(otherParticipant.user_id) : false;
+
+  const getLastSeenText = () => {
+    if (isOnline) return "Online";
+    if (otherParticipant?.profile?.last_seen_at) {
+      const lastSeen = new Date(otherParticipant.profile.last_seen_at);
+      return `Last seen ${formatDistanceToNow(lastSeen, { addSuffix: true })}`;
+    }
+    return "Offline";
+  };
+
   const chatInfo = {
     name: conversation?.is_group
       ? conversation.name || "Group Chat"
       : otherParticipant?.profile?.display_name || "Unknown",
     avatar: otherParticipant?.profile?.avatar_url || "",
-    isOnline: false,
-    lastSeen: "Offline",
+    isOnline,
+    lastSeen: getLastSeenText(),
   };
 
   // Scroll to bottom on new messages

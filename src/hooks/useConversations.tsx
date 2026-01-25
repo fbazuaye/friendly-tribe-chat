@@ -15,6 +15,7 @@ interface Conversation {
       id: string;
       display_name: string | null;
       avatar_url: string | null;
+      last_seen_at?: string | null;
     };
   }>;
   last_message?: {
@@ -61,16 +62,21 @@ export function useConversations() {
             .select("user_id")
             .eq("conversation_id", conv.id);
 
-          const participantProfiles = await Promise.all(
-            (participants || []).map(async (p) => {
-              const { data: profile } = await supabase
-                .from("profiles")
-                .select("id, display_name, avatar_url")
-                .eq("id", p.user_id)
-                .single();
-              return { user_id: p.user_id, profile: profile || undefined };
-            })
+          // Fetch all participant profiles in a single query
+          const participantIds = (participants || []).map((p) => p.user_id);
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, display_name, avatar_url")
+            .in("id", participantIds);
+
+          const profileMap = new Map(
+            (profiles || []).map((p) => [p.id, p])
           );
+
+          const participantProfiles = participantIds.map((userId) => ({
+            user_id: userId,
+            profile: profileMap.get(userId) || undefined,
+          }));
 
           // Get last message
           const { data: messages } = await supabase
@@ -136,16 +142,21 @@ export function useConversation(conversationId: string | undefined) {
         .select("user_id")
         .eq("conversation_id", conversationId);
 
-      const participantProfiles = await Promise.all(
-        (participants || []).map(async (p) => {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("id, display_name, avatar_url")
-            .eq("id", p.user_id)
-            .single();
-          return { user_id: p.user_id, profile: profile || undefined };
-        })
+      // Fetch all participant profiles in a single query
+      const participantIds = (participants || []).map((p) => p.user_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url, last_seen_at")
+        .in("id", participantIds);
+
+      const profileMap = new Map(
+        (profiles || []).map((p) => [p.id, p])
       );
+
+      const participantProfiles = participantIds.map((userId) => ({
+        user_id: userId,
+        profile: profileMap.get(userId) || undefined,
+      }));
 
       return {
         ...conv,
