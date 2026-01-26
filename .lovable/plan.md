@@ -1,76 +1,88 @@
 
-# Plan: Enable Users to Join Broadcast Channels
+# Plan: Organization Onboarding for New Users
 
-## Current State
-- Users can only see channels they own or are already subscribed to
-- Only channel owners can add subscribers (via RLS policy)
-- No way for regular users to discover or join channels
+## Problem
+New users who sign up have `organization_id = NULL` in their profile, which means:
+- They cannot see other users in the chat
+- Other users cannot see them
+- They cannot access any organization features (chats, broadcasts, etc.)
+
+Currently, there is only **one organization** ("LiveGig Organization") and no way for new users to join it.
+
+## Solution: Invite Code System
+
+Implement an invite code system where:
+1. Organizations have unique invite codes
+2. New users enter an invite code after signing up to join an organization
+3. The system automatically creates their profile, role, and token allocation
 
 ## Implementation
 
 ### 1. Database Changes
 
-**Update RLS Policy on `broadcast_subscribers`**
-Add a policy allowing users to subscribe themselves to channels in their organization:
-
+**Add invite code to organizations table:**
 ```sql
--- Allow users to subscribe themselves to org channels
-CREATE POLICY "Users can subscribe to org channels"
-  ON public.broadcast_subscribers FOR INSERT
-  WITH CHECK (
-    user_id = auth.uid() AND 
-    EXISTS (
-      SELECT 1 FROM public.broadcast_channels bc
-      WHERE bc.id = channel_id 
-      AND bc.organization_id = get_user_org_id(auth.uid())
-    )
-  );
+ALTER TABLE organizations 
+ADD COLUMN invite_code TEXT UNIQUE;
+
+-- Generate a code for the existing organization
+UPDATE organizations 
+SET invite_code = 'LIVEGIG2026' 
+WHERE id = '11111111-1111-1111-1111-111111111111';
 ```
 
-### 2. Create Channel Discovery Page
+**Add RLS policy for reading organizations by invite code:**
+```sql
+CREATE POLICY "Anyone can lookup org by invite code"
+  ON public.organizations FOR SELECT
+  USING (true);  -- Allow reading to find org by invite code
+```
 
-**New file: `src/pages/DiscoverChannels.tsx`**
+### 2. Create Onboarding Page
 
-A page that displays all broadcast channels in the user's organization that they haven't subscribed to yet:
-- Fetch all channels in the user's organization
-- Filter out channels the user already subscribes to
-- Show channel name, description, subscriber count
-- "Join" button for each channel
+**New file: `src/pages/JoinOrganization.tsx`**
 
-### 3. Update Broadcasts Page
+A page shown to users without an organization:
+- Friendly welcome message
+- Input field for invite code
+- "Join" button
+- Error handling for invalid codes
 
-**Edit: `src/pages/Broadcasts.tsx`**
+### 3. Modify Auth Flow
 
-Add a "Discover Channels" button/tab:
-- Add a secondary button or tab to navigate to `/broadcasts/discover`
-- Could be a "Browse Channels" icon button in the header
+**Edit: `src/hooks/useAuth.tsx`**
 
-### 4. Add Subscribe Functionality
+After sign-in, check if user has an organization:
+- If yes → proceed to /chats
+- If no → redirect to /join-organization
 
-**Edit: `src/pages/DiscoverChannels.tsx`**
+**Edit: `src/pages/Auth.tsx`**
 
-Subscribe action:
-- Insert row into `broadcast_subscribers` with user_id and channel_id
-- Show success toast: "You've joined [channel name]!"
-- Redirect to the channel or refresh the list
+Update the redirect logic to check organization status.
 
-### 5. Add Unsubscribe Option (Optional Enhancement)
+### 4. Create Join Organization Logic
 
-**Edit: `src/pages/BroadcastChannel.tsx`**
+**New hook or service in `src/hooks/useJoinOrganization.tsx`**
 
-For non-owners, add a "Leave Channel" option:
-- Button in channel header or menu
-- Delete the subscriber row (already allowed by RLS: `user_id = auth.uid()`)
-- Redirect back to broadcasts list
+When a user enters a valid invite code:
+1. Look up organization by invite code
+2. Update profile with organization_id
+3. Create user_role entry (default: 'user')
+4. Create user_token_allocation entry (default quota: 100 tokens)
+5. Redirect to /chats
 
-### 6. Update App Routes
+### 5. Update App Routes
 
 **Edit: `src/App.tsx`**
 
-Add route for the discover page:
+Add route for the join page:
 ```tsx
-<Route path="/broadcasts/discover" element={<DiscoverChannels />} />
+<Route path="/join-organization" element={<JoinOrganization />} />
 ```
+
+### 6. Add Protected Route Logic
+
+Create a wrapper that checks organization membership before allowing access to main app routes.
 
 ---
 
@@ -79,26 +91,48 @@ Add route for the discover page:
 ### Files to Create
 | File | Purpose |
 |------|---------|
-| `src/pages/DiscoverChannels.tsx` | Browse and join available channels |
+| `src/pages/JoinOrganization.tsx` | Invite code entry page |
+| `src/hooks/useJoinOrganization.tsx` | Join organization logic |
 
 ### Files to Modify
 | File | Changes |
 |------|---------|
-| `src/App.tsx` | Add `/broadcasts/discover` route |
-| `src/pages/Broadcasts.tsx` | Add "Discover" navigation button |
-| `src/pages/BroadcastChannel.tsx` | Add "Leave Channel" option for subscribers |
+| `src/App.tsx` | Add `/join-organization` route, add organization check |
+| `src/hooks/useAuth.tsx` | Check organization status on auth state change |
 
-### Database Migration
-- Add new RLS policy allowing self-subscription to org channels
+### Database Changes
+| Change | Purpose |
+|--------|---------|
+| Add `invite_code` column to organizations | Store unique invite codes |
+| Set invite code for existing org | Allow users to join "LiveGig Organization" |
+| Add RLS policy for org lookup | Allow unauthenticated users to find org by code |
 
 ### User Flow
+
 ```text
-User opens Broadcasts → Sees "Discover" button → Views available channels
-    → Clicks "Join" → Becomes subscriber → Can now see channel messages
+New User Signs Up → No organization_id 
+    → Redirected to /join-organization
+    → Enters invite code "LIVEGIG2026"
+    → System creates:
+        - Profile updated with organization_id
+        - user_roles entry (role: 'user')
+        - user_token_allocations entry (100 tokens)
+    → Redirected to /chats
+    → Can now see and chat with other org members
 ```
 
 ### Security Considerations
-- Users can only join channels within their own organization
-- Users can only subscribe themselves (not others)
-- Users can unsubscribe themselves from any channel
-- Channel owners retain full subscriber management capabilities
+- Invite codes should be unique and hard to guess
+- Only authenticated users can use invite codes
+- Users can only join one organization at a time
+- Super admins can regenerate invite codes later (future enhancement)
+
+### Your Existing Invite Code
+Once implemented, share this code with new users:
+**LIVEGIG2026**
+
+---
+
+## Quick Fix Alternative
+
+If you just want to add the new user (`talabigabriel3@gmail.com`) to your organization immediately without the full onboarding system, I can run a database update instead. Let me know which approach you prefer.
