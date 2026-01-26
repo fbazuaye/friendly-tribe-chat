@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Radio, Plus, Users, ChevronRight, Crown, Megaphone, Loader2 } from "lucide-react";
+import { Radio, Plus, Users, ChevronRight, Crown, Megaphone, Loader2, Compass } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -125,6 +125,14 @@ export default function Broadcasts() {
       <header className="sticky top-0 z-40 glass-strong border-b border-border/50">
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="text-2xl font-bold text-gradient">Broadcasts</h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/broadcasts/discover")}
+            title="Discover Channels"
+          >
+            <Compass className="w-5 h-5" />
+          </Button>
         </div>
         
         {/* Info banner */}
@@ -190,9 +198,16 @@ export default function Broadcasts() {
             <Radio className="w-8 h-8 text-muted-foreground" />
           </div>
           <h3 className="font-semibold mb-2">No broadcasts yet</h3>
-          <p className="text-sm text-muted-foreground">
-            Create your first broadcast channel
+          <p className="text-sm text-muted-foreground mb-4">
+            Discover channels to join in your organization
           </p>
+          <Button
+            variant="outline"
+            onClick={() => navigate("/broadcasts/discover")}
+          >
+            <Compass className="w-4 h-4 mr-2" />
+            Discover Channels
+          </Button>
         </div>
       )}
 

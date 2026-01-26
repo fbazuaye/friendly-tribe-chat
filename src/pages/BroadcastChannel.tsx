@@ -3,7 +3,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Radio, Users, Send, Loader2, Crown } from "lucide-react";
+import { ArrowLeft, Radio, Users, Send, Loader2, Crown, LogOut } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,6 +25,7 @@ interface ChannelInfo {
   description: string | null;
   owner_id: string;
   subscriber_count: number;
+  is_subscribed: boolean;
 }
 
 export default function BroadcastChannel() {
@@ -37,6 +38,7 @@ export default function BroadcastChannel() {
   const [messages, setMessages] = useState<BroadcastMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   const isOwner = user?.id === channel?.owner_id;
@@ -80,9 +82,18 @@ export default function BroadcastChannel() {
         .select("*", { count: "exact", head: true })
         .eq("channel_id", id);
 
+      // Check if user is subscribed
+      const { data: subscription } = await supabase
+        .from("broadcast_subscribers")
+        .select("id")
+        .eq("channel_id", id)
+        .eq("user_id", user?.id)
+        .maybeSingle();
+
       setChannel({
         ...channelData,
         subscriber_count: count || 0,
+        is_subscribed: !!subscription,
       });
     } catch (error) {
       console.error("Error loading channel:", error);
@@ -152,6 +163,38 @@ export default function BroadcastChannel() {
     }
   };
 
+  const handleLeaveChannel = async () => {
+    if (!id || !user || isLeaving) return;
+
+    setIsLeaving(true);
+
+    try {
+      const { error } = await supabase
+        .from("broadcast_subscribers")
+        .delete()
+        .eq("channel_id", id)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Left channel",
+        description: `You've left "${channel?.name}"`,
+      });
+
+      navigate("/broadcasts");
+    } catch (error: any) {
+      console.error("Error leaving channel:", error);
+      toast({
+        title: "Failed to leave",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -193,6 +236,23 @@ export default function BroadcastChannel() {
               </div>
             </div>
           </div>
+
+          {/* Leave button for non-owners */}
+          {!isOwner && channel?.is_subscribed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLeaveChannel}
+              disabled={isLeaving}
+              title="Leave channel"
+            >
+              {isLeaving ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <LogOut className="w-5 h-5" />
+              )}
+            </Button>
+          )}
         </div>
       </header>
 
