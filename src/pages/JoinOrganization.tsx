@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/ui/Logo";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrganizationCheck } from "@/hooks/useOrganizationCheck";
 import { useJoinOrganization } from "@/hooks/useJoinOrganization";
-import { supabase } from "@/integrations/supabase/client";
 import { 
   ArrowRight, 
   Loader2,
@@ -18,48 +18,20 @@ import { cn } from "@/lib/utils";
 
 export default function JoinOrganization() {
   const navigate = useNavigate();
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { signOut } = useAuth();
+  const { user, hasOrganization, loading } = useOrganizationCheck();
   const { joinOrganization, isLoading, error, clearError } = useJoinOrganization();
   const [inviteCode, setInviteCode] = useState("");
-  const [checkingOrg, setCheckingOrg] = useState(true);
 
-  // Check if user already has an organization
   useEffect(() => {
-    const checkOrganization = async () => {
+    if (!loading) {
       if (!user) {
-        setCheckingOrg(false);
-        return;
+        navigate("/auth");
+      } else if (hasOrganization === true) {
+        navigate("/chats");
       }
-
-      try {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("organization_id")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (profile?.organization_id) {
-          // User already has an organization, redirect to chats
-          navigate("/chats");
-        }
-      } catch (err) {
-        console.error("Error checking organization:", err);
-      } finally {
-        setCheckingOrg(false);
-      }
-    };
-
-    if (!authLoading) {
-      checkOrganization();
     }
-  }, [user, authLoading, navigate]);
-
-  // Redirect to auth if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [user, authLoading, navigate]);
+  }, [user, hasOrganization, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +43,7 @@ export default function JoinOrganization() {
     navigate("/");
   };
 
-  if (authLoading || checkingOrg) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
