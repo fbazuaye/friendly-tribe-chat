@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { formatDistanceToNow } from "date-fns";
 
 interface BroadcastChannel {
@@ -25,6 +26,7 @@ interface BroadcastChannel {
 export default function Broadcasts() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isAdmin } = useUserRole();
   const [broadcasts, setBroadcasts] = useState<BroadcastChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -130,7 +132,7 @@ export default function Broadcasts() {
           <div className="flex items-center gap-3 p-3 bg-primary/10 rounded-xl">
             <Megaphone className="w-5 h-5 text-primary flex-shrink-0" />
             <p className="text-sm text-muted-foreground">
-              Send messages to many subscribers at once. <span className="text-primary">20 tokens</span> per broadcast.
+              Send messages to many subscribers at once. <span className="text-primary">1 token</span> per broadcast.
             </p>
           </div>
         </div>
@@ -194,14 +196,16 @@ export default function Broadcasts() {
         </div>
       )}
 
-      {/* FAB */}
-      <Button
-        size="icon"
-        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-gradient-primary hover:opacity-90 shadow-glow z-40"
-        onClick={() => navigate("/broadcast/create")}
-      >
-        <Plus className="w-6 h-6" />
-      </Button>
+      {/* FAB - Only for admins */}
+      {isAdmin && (
+        <Button
+          size="icon"
+          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-gradient-primary hover:opacity-90 shadow-glow z-40"
+          onClick={() => navigate("/broadcast/create")}
+        >
+          <Plus className="w-6 h-6" />
+        </Button>
+      )}
     </AppLayout>
   );
 }

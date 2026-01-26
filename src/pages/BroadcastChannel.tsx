@@ -234,7 +234,7 @@ export default function BroadcastChannel() {
         <div className="sticky bottom-0 border-t border-border/50 bg-background p-3">
           <div className="flex items-center gap-2 p-3 bg-secondary/50 rounded-xl">
             <p className="text-xs text-muted-foreground">
-              <span className="text-primary font-medium">20 tokens</span> per broadcast
+              <span className="text-primary font-medium">1 token</span> per broadcast
             </p>
           </div>
           <div className="flex items-center gap-2 mt-2">
