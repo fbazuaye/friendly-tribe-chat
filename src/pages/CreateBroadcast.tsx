@@ -1,21 +1,35 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Radio, Loader2 } from "lucide-react";
+import { ArrowLeft, Radio, Loader2, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "@/hooks/use-toast";
 
 export default function CreateBroadcast() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect non-admins
+  useEffect(() => {
+    if (!roleLoading && !isAdmin) {
+      toast({
+        title: "Access denied",
+        description: "Only admins can create broadcast channels",
+        variant: "destructive",
+      });
+      navigate("/broadcasts");
+    }
+  }, [roleLoading, isAdmin, navigate]);
 
   const handleCreate = async () => {
     if (!name.trim()) {
@@ -31,6 +45,15 @@ export default function CreateBroadcast() {
       toast({
         title: "Not authenticated",
         description: "Please sign in to create a broadcast channel",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isAdmin) {
+      toast({
+        title: "Access denied",
+        description: "Only admins can create broadcast channels",
         variant: "destructive",
       });
       return;
@@ -90,6 +113,32 @@ export default function CreateBroadcast() {
     }
   };
 
+  if (roleLoading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center h-[60vh] px-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+            <ShieldAlert className="w-8 h-8 text-destructive" />
+          </div>
+          <h3 className="font-semibold mb-2">Access Denied</h3>
+          <p className="text-sm text-muted-foreground">
+            Only admins can create broadcast channels
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       {/* Header */}
@@ -140,7 +189,7 @@ export default function CreateBroadcast() {
         <div className="p-4 bg-secondary/50 rounded-xl text-sm text-muted-foreground">
           <p>
             As the channel owner, you'll be able to send broadcast messages to all
-            subscribers. Each broadcast costs <span className="text-primary font-medium">20 tokens</span>.
+            subscribers. Each broadcast costs <span className="text-primary font-medium">1 token</span>.
           </p>
         </div>
 

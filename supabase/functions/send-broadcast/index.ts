@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BROADCAST_TOKEN_COST = 20;
+const BROADCAST_TOKEN_COST = 1;
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
