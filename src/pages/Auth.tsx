@@ -41,11 +41,12 @@ export default function Auth() {
   // Redirect if already authenticated - check organization status
   useEffect(() => {
     if (!authLoading && !orgLoading && user) {
-      if (hasOrganization) {
+      if (hasOrganization === true) {
         navigate("/chats");
-      } else {
+      } else if (hasOrganization === false) {
         navigate("/join-organization");
       }
+      // When hasOrganization is null, do nothing (still determining)
     }
   }, [user, authLoading, orgLoading, hasOrganization, navigate]);
 
