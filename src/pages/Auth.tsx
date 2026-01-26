@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrganizationCheck } from "@/hooks/useOrganizationCheck";
 import { z } from "zod";
 
 const emailSchema = z.string().email("Please enter a valid email address");
@@ -27,6 +28,7 @@ export default function Auth() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, loading: authLoading, signIn, signUp } = useAuth();
+  const { hasOrganization, loading: orgLoading } = useOrganizationCheck();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
@@ -36,12 +38,16 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated - check organization status
   useEffect(() => {
-    if (!authLoading && user) {
-      navigate("/chats");
+    if (!authLoading && !orgLoading && user) {
+      if (hasOrganization) {
+        navigate("/chats");
+      } else {
+        navigate("/join-organization");
+      }
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, orgLoading, hasOrganization, navigate]);
 
   const validateForm = (isSignUp: boolean): boolean => {
     const newErrors: { email?: string; password?: string } = {};
@@ -91,9 +97,9 @@ export default function Auth() {
         
         toast({
           title: "Account created!",
-          description: "Welcome to Pulse Community!",
+          description: "Let's get you set up with your team.",
         });
-        navigate("/chats");
+        navigate("/join-organization");
       } else {
         const { error } = await signIn(email, password);
         
@@ -116,16 +122,16 @@ export default function Auth() {
         
         toast({
           title: "Welcome back!",
-          description: "Redirecting to your chats...",
+          description: "Redirecting...",
         });
-        navigate("/chats");
+        // Navigation will be handled by useEffect based on org status
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (authLoading) {
+  if (authLoading || orgLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />

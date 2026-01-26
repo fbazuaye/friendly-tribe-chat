@@ -6,8 +6,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { PresenceProvider } from "@/hooks/useUserPresence";
 import { NotificationPrompt } from "@/components/notifications/NotificationPrompt";
+import { RequireOrganization } from "@/components/auth/RequireOrganization";
 import Welcome from "./pages/Welcome";
 import Auth from "./pages/Auth";
+import JoinOrganization from "./pages/JoinOrganization";
 import Chats from "./pages/Chats";
 import ChatConversation from "./pages/ChatConversation";
 import Communities from "./pages/Communities";
@@ -34,27 +36,28 @@ const App = () => (
               {/* Public routes */}
               <Route path="/" element={<Welcome />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/join-organization" element={<JoinOrganization />} />
               
-              {/* Main app routes */}
-              <Route path="/chats" element={<Chats />} />
-              <Route path="/chat/:id" element={<ChatConversation />} />
-              <Route path="/chat/new" element={<ChatConversation />} />
+              {/* Main app routes - require organization */}
+              <Route path="/chats" element={<RequireOrganization><Chats /></RequireOrganization>} />
+              <Route path="/chat/:id" element={<RequireOrganization><ChatConversation /></RequireOrganization>} />
+              <Route path="/chat/new" element={<RequireOrganization><ChatConversation /></RequireOrganization>} />
               
-              <Route path="/communities" element={<Communities />} />
-              <Route path="/community/:id" element={<Communities />} />
+              <Route path="/communities" element={<RequireOrganization><Communities /></RequireOrganization>} />
+              <Route path="/community/:id" element={<RequireOrganization><Communities /></RequireOrganization>} />
               
-              <Route path="/broadcasts" element={<Broadcasts />} />
-              <Route path="/broadcasts/discover" element={<DiscoverChannels />} />
-              <Route path="/broadcast/create" element={<CreateBroadcast />} />
-              <Route path="/broadcast/:id" element={<BroadcastChannel />} />
+              <Route path="/broadcasts" element={<RequireOrganization><Broadcasts /></RequireOrganization>} />
+              <Route path="/broadcasts/discover" element={<RequireOrganization><DiscoverChannels /></RequireOrganization>} />
+              <Route path="/broadcast/create" element={<RequireOrganization><CreateBroadcast /></RequireOrganization>} />
+              <Route path="/broadcast/:id" element={<RequireOrganization><BroadcastChannel /></RequireOrganization>} />
               
-              <Route path="/ai" element={<AIAssistant />} />
+              <Route path="/ai" element={<RequireOrganization><AIAssistant /></RequireOrganization>} />
               
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/profile/*" element={<Profile />} />
+              <Route path="/profile" element={<RequireOrganization><Profile /></RequireOrganization>} />
+              <Route path="/profile/*" element={<RequireOrganization><Profile /></RequireOrganization>} />
               
               {/* Admin routes */}
-              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin" element={<RequireOrganization><AdminDashboard /></RequireOrganization>} />
               
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
