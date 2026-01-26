@@ -71,20 +71,7 @@ export function useJoinOrganization() {
         console.error("Error creating user role:", roleError);
       }
 
-      // 4. Create user_token_allocation entry (default quota: 100 tokens)
-      const { error: tokenError } = await supabase
-        .from("user_token_allocations")
-        .insert({
-          user_id: user.id,
-          organization_id: org.id,
-          monthly_quota: 100,
-          current_balance: 100,
-        });
-
-      if (tokenError) {
-        // Allocation might already exist, log but don't fail
-        console.error("Error creating token allocation:", tokenError);
-      }
+      // Note: Token allocation is handled by admins, not during self-registration
 
       toast({
         title: "Welcome!",
