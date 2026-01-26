@@ -45,11 +45,17 @@ export function useJoinOrganization() {
         return false;
       }
 
-      // 2. Update profile with organization_id
+      // 2. Ensure profile exists and set organization_id
+      // (Some accounts can end up without a profile row; UPDATE would silently affect 0 rows.)
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({ organization_id: org.id })
-        .eq("id", user.id);
+        .upsert(
+          {
+            id: user.id,
+            organization_id: org.id,
+          },
+          { onConflict: "id" }
+        );
 
       if (profileError) {
         console.error("Error updating profile:", profileError);
