@@ -14,6 +14,7 @@ import Communities from "./pages/Communities";
 import Broadcasts from "./pages/Broadcasts";
 import CreateBroadcast from "./pages/CreateBroadcast";
 import BroadcastChannel from "./pages/BroadcastChannel";
+import DiscoverChannels from "./pages/DiscoverChannels";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/community/:id" element={<Communities />} />
               
               <Route path="/broadcasts" element={<Broadcasts />} />
+              <Route path="/broadcasts/discover" element={<DiscoverChannels />} />
               <Route path="/broadcast/create" element={<CreateBroadcast />} />
               <Route path="/broadcast/:id" element={<BroadcastChannel />} />
               
