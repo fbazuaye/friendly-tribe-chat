@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Coins, Users, History, Loader2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Coins, Users, History, Loader2, ShieldAlert, Settings } from "lucide-react";
 import { WalletOverview } from "@/components/admin/WalletOverview";
 import { UserManagement } from "@/components/admin/UserManagement";
 import { TransactionHistory } from "@/components/admin/TransactionHistory";
 import { PurchaseTokensDialog } from "@/components/admin/PurchaseTokensDialog";
+import { InviteCodeManager } from "@/components/admin/InviteCodeManager";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -77,7 +78,7 @@ export default function AdminDashboard() {
       {/* Main content */}
       <div className="p-4 pb-24">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-secondary/50">
+          <TabsList className={`grid w-full bg-secondary/50 ${isSuperAdmin ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="overview" className="gap-2">
               <Coins className="w-4 h-4" />
               <span className="hidden sm:inline">Wallet</span>
@@ -90,6 +91,12 @@ export default function AdminDashboard() {
               <History className="w-4 h-4" />
               <span className="hidden sm:inline">History</span>
             </TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger value="settings" className="gap-2">
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">Settings</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="overview" className="mt-6">
@@ -103,6 +110,12 @@ export default function AdminDashboard() {
           <TabsContent value="history" className="mt-6">
             <TransactionHistory />
           </TabsContent>
+
+          {isSuperAdmin && (
+            <TabsContent value="settings" className="mt-6 space-y-6">
+              <InviteCodeManager />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 
