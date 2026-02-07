@@ -100,17 +100,21 @@ Deno.serve(async (req) => {
     }
 
     // Send via Africa's Talking
-    const atUsername = "Sandbox";
+    const atUsername = Deno.env.get("AFRICASTALKING_USERNAME") || "Sandbox";
+    const isSandbox = atUsername === "Sandbox";
+    const apiUrl = isSandbox
+      ? "https://api.sandbox.africastalking.com/version1/messaging"
+      : "https://api.africastalking.com/version1/messaging";
     const recipients = phoneNumbers.join(",");
 
-    console.log(`Sending bulk SMS to ${phoneNumbers.length} recipients via Africa's Talking`);
+    console.log(`Sending bulk SMS to ${phoneNumbers.length} recipients via Africa's Talking (${isSandbox ? 'sandbox' : 'production'})`);
 
     const formData = new URLSearchParams();
     formData.append("username", atUsername);
     formData.append("to", recipients);
     formData.append("message", message);
 
-    const atResponse = await fetch("https://api.sandbox.africastalking.com/version1/messaging", {
+    const atResponse = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "apiKey": atApiKey,
