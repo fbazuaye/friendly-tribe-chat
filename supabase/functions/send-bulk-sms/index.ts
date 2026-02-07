@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
 
     // Auth check
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -32,13 +32,18 @@ Deno.serve(async (req) => {
     const supabaseAuth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      console.error("Auth claims error:", claimsError);
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const userId = claimsData.claims.sub as string;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -46,7 +51,7 @@ Deno.serve(async (req) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("organization_id")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single();
 
     if (!profile?.organization_id) {
@@ -62,7 +67,7 @@ Deno.serve(async (req) => {
     const { data: roleData } = await supabase
       .from("user_roles")
       .select("role")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("organization_id", orgId)
       .single();
 
@@ -87,7 +92,7 @@ Deno.serve(async (req) => {
       .from("sms_logs")
       .insert({
         organization_id: orgId,
-        sent_by: user.id,
+        sent_by: userId,
         message,
         recipient_count: phoneNumbers.length,
         status: "sending",
