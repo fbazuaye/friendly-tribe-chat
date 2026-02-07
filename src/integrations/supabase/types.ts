@@ -339,6 +339,82 @@ export type Database = {
           },
         ]
       }
+      sms_contacts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string | null
+          organization_id: string
+          phone_number: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string | null
+          organization_id: string
+          phone_number: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string | null
+          organization_id?: string
+          phone_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_contacts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_logs: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          organization_id: string
+          recipient_count: number
+          response_data: Json | null
+          sent_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          organization_id: string
+          recipient_count?: number
+          response_data?: Json | null
+          sent_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          organization_id?: string
+          recipient_count?: number
+          response_data?: Json | null
+          sent_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       token_action_costs: {
         Row: {
           action_type: Database["public"]["Enums"]["token_action_type"]

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Coins, Users, History, Loader2, ShieldAlert, Settings } from "lucide-react";
+import { ArrowLeft, Coins, Users, History, Loader2, ShieldAlert, Settings, MessageSquare } from "lucide-react";
 import { WalletOverview } from "@/components/admin/WalletOverview";
 import { UserManagement } from "@/components/admin/UserManagement";
 import { TransactionHistory } from "@/components/admin/TransactionHistory";
@@ -72,6 +72,15 @@ export default function AdminDashboard() {
               {isSuperAdmin ? "Super Admin" : "Admin"} · Token Management
             </p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/admin/sms")}
+            className="gap-1.5"
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span className="hidden sm:inline">Bulk SMS</span>
+          </Button>
         </div>
       </header>
 

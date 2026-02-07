@@ -20,6 +20,7 @@ import DiscoverChannels from "./pages/DiscoverChannels";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/AdminDashboard";
+import BulkSMS from "./pages/BulkSMS";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ const App = () => (
               
               {/* Admin routes */}
               <Route path="/admin" element={<RequireOrganization><AdminDashboard /></RequireOrganization>} />
+              <Route path="/admin/sms" element={<RequireOrganization><BulkSMS /></RequireOrganization>} />
               
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
