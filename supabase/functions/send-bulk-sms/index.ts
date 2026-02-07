@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     formData.append("to", recipients);
     formData.append("message", message);
 
-    const atResponse = await fetch("https://api.africastalking.com/version1/messaging", {
+    const atResponse = await fetch("https://api.sandbox.africastalking.com/version1/messaging", {
       method: "POST",
       headers: {
         "apiKey": atApiKey,
@@ -120,7 +120,14 @@ Deno.serve(async (req) => {
       body: formData.toString(),
     });
 
-    const atResult = await atResponse.json();
+    const responseText = await atResponse.text();
+    let atResult;
+    try {
+      atResult = JSON.parse(responseText);
+    } catch {
+      console.error("Non-JSON response from AT:", responseText);
+      throw new Error(`Africa's Talking returned non-JSON: ${responseText}`);
+    }
     console.log("Africa's Talking response:", JSON.stringify(atResult));
 
     // Update log with result
