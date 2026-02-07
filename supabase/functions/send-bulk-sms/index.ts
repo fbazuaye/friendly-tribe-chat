@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
       : "https://api.africastalking.com/version1/messaging";
     const recipients = phoneNumbers.join(",");
 
-    console.log(`Sending bulk SMS to ${phoneNumbers.length} recipients via Africa's Talking (${isSandbox ? 'sandbox' : 'production'})`);
+    console.log(`Sending bulk SMS to ${phoneNumbers.length} recipients via Africa's Talking (${isSandbox ? 'sandbox' : 'production'}), username="${atUsername}", apiKey starts with "${atApiKey.substring(0, 8)}..."`);
 
     const formData = new URLSearchParams();
     formData.append("username", atUsername);
