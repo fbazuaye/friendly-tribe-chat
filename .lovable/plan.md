@@ -1,33 +1,29 @@
 
 
-## Fix: Bulk SMS Page Not Displaying
+## Fix: Africa's Talking Sandbox API URL
 
 ### Problem
-When navigating to `/admin/sms`, the page appears blank. This happens because:
-
-1. The `RequireOrganization` wrapper returns `null` (blank screen) while checking auth state, and during the redirect to `/auth`
-2. The `BulkSMS` page has its own separate auth/role loading check that duplicates the wrapper's work
-3. If the user IS authenticated but the role check is slow, the page shows only a spinner with no context
+The `send-bulk-sms` edge function is calling the **production** Africa's Talking endpoint (`api.africastalking.com`) while using the **Sandbox** username. The production endpoint rejects the sandbox API key with a plain-text error like "The supplied API key is invalid", which the function then fails to parse as JSON -- causing the 500 error.
 
 ### Solution
+Change the API URL to the sandbox endpoint and add safer response parsing.
 
-**1. Remove redundant auth checking from BulkSMS.tsx**
-- The `RequireOrganization` wrapper already handles redirecting unauthenticated users
-- Remove the duplicate `useAuth` loading check from `BulkSMS`
-- Keep only the `useUserRole` admin check for authorization
+### Changes
 
-**2. Add a visible loading state to RequireOrganization**
-- Instead of returning `null` while redirecting, show a branded loading screen with a message like "Redirecting to login..."
-- This prevents the blank page flash
+**File: `supabase/functions/send-bulk-sms/index.ts`**
 
-**3. Improve the BulkSMS loading/access denied states**
-- Show the page header even while the role is loading, so users see something immediately
-- Keep the admin-only gate but with better visual feedback
+1. Change the API URL from `https://api.africastalking.com/version1/messaging` to `https://api.sandbox.africastalking.com/version1/messaging` (line 113)
+2. Add safe response parsing: read the response as text first, then try to parse as JSON. If parsing fails, use the raw text in the error message. This prevents crashes if the API returns non-JSON errors.
 
-### Technical Changes
-
-| File | Change |
-|------|--------|
-| `src/components/auth/RequireOrganization.tsx` | Show loading UI instead of `null` when redirecting unauthenticated users |
-| `src/pages/BulkSMS.tsx` | Remove duplicate `useAuth` loading check; rely on `RequireOrganization` for auth; keep `useUserRole` for admin gating |
+```
+// Before parsing:
+const responseText = await atResponse.text();
+let atResult;
+try {
+  atResult = JSON.parse(responseText);
+} catch {
+  console.error("Non-JSON response from AT:", responseText);
+  throw new Error(`Africa's Talking returned non-JSON: ${responseText}`);
+}
+```
 
