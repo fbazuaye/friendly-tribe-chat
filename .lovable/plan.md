@@ -1,89 +1,33 @@
 
-# Fix: New User Not Redirected to Join Organization Page
 
-## Problem Summary
-New users who sign in without an organization are not being automatically redirected to `/join-organization`. This affects the onboarding flow where users must enter an invite code to join an organization.
+## Fix: Bulk SMS Page Not Displaying
 
-## Root Cause
-The redirect logic in `Auth.tsx` has a bug where it doesn't properly distinguish between:
-- `hasOrganization === null` (still loading/unknown state)
-- `hasOrganization === false` (confirmed user has no organization)
+### Problem
+When navigating to `/admin/sms`, the page appears blank. This happens because:
 
-Current code treats `null` as falsy, which can cause premature or missed redirects due to timing issues with the auth state listener.
+1. The `RequireOrganization` wrapper returns `null` (blank screen) while checking auth state, and during the redirect to `/auth`
+2. The `BulkSMS` page has its own separate auth/role loading check that duplicates the wrapper's work
+3. If the user IS authenticated but the role check is slow, the page shows only a spinner with no context
 
-## Solution Overview
+### Solution
 
-### 1. Fix Auth.tsx Redirect Logic
-Update the `useEffect` to explicitly check for `hasOrganization === false` instead of relying on falsy evaluation:
+**1. Remove redundant auth checking from BulkSMS.tsx**
+- The `RequireOrganization` wrapper already handles redirecting unauthenticated users
+- Remove the duplicate `useAuth` loading check from `BulkSMS`
+- Keep only the `useUserRole` admin check for authorization
 
-```typescript
-useEffect(() => {
-  if (!authLoading && !orgLoading && user) {
-    if (hasOrganization === true) {
-      navigate("/chats");
-    } else if (hasOrganization === false) {
-      navigate("/join-organization");
-    }
-    // When hasOrganization is null, do nothing (still determining)
-  }
-}, [user, authLoading, orgLoading, hasOrganization, navigate]);
-```
+**2. Add a visible loading state to RequireOrganization**
+- Instead of returning `null` while redirecting, show a branded loading screen with a message like "Redirecting to login..."
+- This prevents the blank page flash
 
-### 2. Improve useOrganizationCheck Hook
-Add a re-fetch mechanism when the user changes to ensure the organization status is always current:
+**3. Improve the BulkSMS loading/access denied states**
+- Show the page header even while the role is loading, so users see something immediately
+- Keep the admin-only gate but with better visual feedback
 
-- Add the user ID to the dependency array for the profile query
-- Ensure the loading state properly resets when user changes
-- Add a refetch function that can be called after profile updates
+### Technical Changes
 
-### 3. Fix Sign-In Flow in Auth.tsx
-After a successful sign-in, the navigation should wait for the organization check to complete rather than relying solely on the `useEffect`:
+| File | Change |
+|------|--------|
+| `src/components/auth/RequireOrganization.tsx` | Show loading UI instead of `null` when redirecting unauthenticated users |
+| `src/pages/BulkSMS.tsx` | Remove duplicate `useAuth` loading check; rely on `RequireOrganization` for auth; keep `useUserRole` for admin gating |
 
-- Remove the comment "Navigation will be handled by useEffect based on org status"
-- Ensure the `useOrganizationCheck` hook re-evaluates after sign-in
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/pages/Auth.tsx` | Fix redirect logic to use explicit boolean checks |
-| `src/hooks/useOrganizationCheck.tsx` | Add refetch capability and improve loading state management |
-
-## Technical Details
-
-### Auth.tsx Changes
-```typescript
-// Before (buggy)
-if (hasOrganization) {
-  navigate("/chats");
-} else {
-  navigate("/join-organization");
-}
-
-// After (fixed)
-if (hasOrganization === true) {
-  navigate("/chats");
-} else if (hasOrganization === false) {
-  navigate("/join-organization");
-}
-```
-
-### useOrganizationCheck.tsx Changes
-- Reset `hasOrganization` to `null` and `loading` to `true` when user changes
-- This ensures a fresh check is performed for each authentication event
-- Add `refetch` function to the returned object for manual re-checks if needed
-
-## Expected Behavior After Fix
-1. New user signs up or signs in
-2. `useOrganizationCheck` queries their profile
-3. If `organization_id` is null, `hasOrganization` is set to `false`
-4. The `useEffect` in Auth.tsx detects `hasOrganization === false`
-5. User is redirected to `/join-organization`
-6. User enters invite code and joins organization
-7. User is redirected to `/chats`
-
-## Testing Checklist
-- New user signup redirects to `/join-organization`
-- Existing user without organization signing in redirects to `/join-organization`
-- Existing user with organization signing in redirects to `/chats`
-- After joining organization, user is redirected to `/chats`
