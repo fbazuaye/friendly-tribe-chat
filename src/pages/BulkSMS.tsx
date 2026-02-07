@@ -1,32 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, MessageSquare, Users, History, Loader2, ShieldAlert } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useAuth } from "@/hooks/useAuth";
 import { SMSContactManager } from "@/components/sms/SMSContactManager";
 import { SMSComposer } from "@/components/sms/SMSComposer";
 import { SMSHistory } from "@/components/sms/SMSHistory";
-import { useEffect } from "react";
 
 export default function BulkSMS() {
   const navigate = useNavigate();
-  const { loading: authLoading } = useAuth();
   const { role, loading: roleLoading } = useUserRole();
   const [activeTab, setActiveTab] = useState("compose");
 
-  const loading = authLoading || roleLoading;
   const isAdmin = role === "super_admin" || role === "admin";
 
   useEffect(() => {
-    if (!loading && !isAdmin) {
+    if (!roleLoading && !isAdmin) {
       navigate("/");
     }
-  }, [loading, isAdmin, navigate]);
+  }, [roleLoading, isAdmin, navigate]);
 
-  if (loading) {
+  if (roleLoading) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center min-h-screen">
