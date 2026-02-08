@@ -113,6 +113,8 @@ export function useMessages(conversationId: string | undefined) {
         .update({ last_read_at: new Date().toISOString() })
         .eq("conversation_id", conversationId)
         .eq("user_id", user.id);
+
+      queryClient.invalidateQueries({ queryKey: ["unread-count"] });
     };
 
     markAsRead();

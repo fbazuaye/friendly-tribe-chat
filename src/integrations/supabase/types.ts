@@ -94,18 +94,21 @@ export type Database = {
         Row: {
           channel_id: string
           id: string
+          last_read_at: string | null
           subscribed_at: string
           user_id: string
         }
         Insert: {
           channel_id: string
           id?: string
+          last_read_at?: string | null
           subscribed_at?: string
           user_id: string
         }
         Update: {
           channel_id?: string
           id?: string
+          last_read_at?: string | null
           subscribed_at?: string
           user_id?: string
         }

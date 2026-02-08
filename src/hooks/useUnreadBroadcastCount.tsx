@@ -14,18 +14,15 @@ export function useUnreadBroadcastCount() {
       // Get channels the user is subscribed to with their subscription time
       const { data: subscriptions } = await supabase
         .from("broadcast_subscribers")
-        .select("channel_id, subscribed_at")
+        .select("channel_id, subscribed_at, last_read_at")
         .eq("user_id", user.id);
 
       if (!subscriptions?.length) return 0;
 
-      // For now, count broadcast messages from the last 24 hours
-      // that were sent after the user subscribed
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
       let total = 0;
       for (const sub of subscriptions) {
-        const cutoff = sub.subscribed_at > oneDayAgo ? sub.subscribed_at : oneDayAgo;
+        // Use last_read_at if available, otherwise fall back to subscribed_at
+        const cutoff = sub.last_read_at || sub.subscribed_at;
         const { count } = await supabase
           .from("broadcast_messages")
           .select("*", { count: "exact", head: true })
