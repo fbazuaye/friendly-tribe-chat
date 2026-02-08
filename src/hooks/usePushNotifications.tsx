@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -10,11 +10,17 @@ interface PushSubscription {
 
 export function usePushNotifications() {
   const { user } = useAuth();
+  const mountedRef = useRef(true);
   const [subscription, setSubscription] = useState<PushSubscription>({
     supported: false,
     permission: null,
     enabled: false,
   });
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     // Check if push notifications are supported
@@ -23,7 +29,7 @@ export function usePushNotifications() {
       "serviceWorker" in navigator &&
       "PushManager" in window;
 
-    if (supported) {
+    if (supported && mountedRef.current) {
       setSubscription((prev) => ({
         ...prev,
         supported: true,
@@ -38,11 +44,13 @@ export function usePushNotifications() {
 
     try {
       const permission = await Notification.requestPermission();
-      setSubscription((prev) => ({
-        ...prev,
-        permission,
-        enabled: permission === "granted",
-      }));
+      if (mountedRef.current) {
+        setSubscription((prev) => ({
+          ...prev,
+          permission,
+          enabled: permission === "granted",
+        }));
+      }
       return permission === "granted";
     } catch (error) {
       console.error("Error requesting notification permission:", error);
