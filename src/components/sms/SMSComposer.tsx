@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,8 +28,7 @@ export function SMSComposer() {
     setContactsLoaded(true);
   };
 
-  // Load contacts on mount
-  useState(() => { loadContacts(); });
+  useEffect(() => { loadContacts(); }, [organizationId]);
 
   const getRecipients = (): string[] => {
     if (useAllContacts) {
