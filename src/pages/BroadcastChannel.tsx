@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Radio, Users, Send, Loader2, Crown, LogOut } from "lucide-react";
@@ -32,6 +33,7 @@ export default function BroadcastChannel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
@@ -53,6 +55,23 @@ export default function BroadcastChannel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Mark broadcast as read when viewing
+  useEffect(() => {
+    if (!id || !user?.id) return;
+
+    const markAsRead = async () => {
+      await supabase
+        .from("broadcast_subscribers")
+        .update({ last_read_at: new Date().toISOString() })
+        .eq("channel_id", id)
+        .eq("user_id", user.id);
+
+      queryClient.invalidateQueries({ queryKey: ["unread-broadcast-count"] });
+    };
+
+    markAsRead();
+  }, [id, user?.id, messages]);
 
   const loadChannel = async () => {
     if (!id) return;
