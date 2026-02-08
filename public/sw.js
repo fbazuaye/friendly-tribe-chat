@@ -65,7 +65,7 @@ async function syncMessages() {
   console.log('Syncing messages...');
 }
 
-// Handle messages from the app for showing notifications
+// Handle messages from the app for showing notifications and badge
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     const { title, body, icon, badge, tag, data } = event.data.payload;
@@ -81,6 +81,18 @@ self.addEventListener('message', (event) => {
         { action: 'close', title: 'Close' }
       ]
     });
+  }
+
+  // Update app badge count
+  if (event.data && event.data.type === 'SET_BADGE') {
+    const count = event.data.count;
+    if (navigator.setAppBadge) {
+      if (count > 0) {
+        navigator.setAppBadge(count);
+      } else {
+        navigator.clearAppBadge();
+      }
+    }
   }
 });
 
@@ -108,11 +120,16 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Notification click
+// Notification click - clear badge when user opens the app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   
   if (event.action === 'close') return;
+
+  // Clear badge when user interacts with notification
+  if (navigator.clearAppBadge) {
+    navigator.clearAppBadge();
+  }
   
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((clientList) => {
