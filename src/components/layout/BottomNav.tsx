@@ -2,11 +2,12 @@ import { cn } from "@/lib/utils";
 import { Link, useLocation } from "react-router-dom";
 import { MessageCircle, Users, Radio, User, Sparkles } from "lucide-react";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
+import { useUnreadBroadcastCount } from "@/hooks/useUnreadBroadcastCount";
 
 const navItems = [
-  { path: "/chats", icon: MessageCircle, label: "Chats", showBadge: true },
+  { path: "/chats", icon: MessageCircle, label: "Chats", badgeKey: "chats" as const },
   { path: "/communities", icon: Users, label: "Communities" },
-  { path: "/broadcasts", icon: Radio, label: "Broadcasts" },
+  { path: "/broadcasts", icon: Radio, label: "Broadcasts", badgeKey: "broadcasts" as const },
   { path: "/ai", icon: Sparkles, label: "AI" },
   { path: "/profile", icon: User, label: "Profile" },
 ];
@@ -14,6 +15,13 @@ const navItems = [
 export function BottomNav() {
   const location = useLocation();
   const unreadCount = useUnreadCount();
+  const unreadBroadcastCount = useUnreadBroadcastCount();
+
+  const getBadgeCount = (badgeKey?: "chats" | "broadcasts") => {
+    if (badgeKey === "chats") return unreadCount;
+    if (badgeKey === "broadcasts") return unreadBroadcastCount;
+    return 0;
+  };
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 glass-strong border-t border-border/50 bottom-nav-safe">
@@ -39,9 +47,9 @@ export function BottomNav() {
                   "w-5 h-5 transition-transform duration-200",
                   isActive && "scale-110"
                 )} />
-                {item.showBadge && unreadCount > 0 && (
+                {item.badgeKey && getBadgeCount(item.badgeKey) > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                    {getBadgeCount(item.badgeKey) > 99 ? "99+" : getBadgeCount(item.badgeKey)}
                   </span>
                 )}
                 {isActive && (
