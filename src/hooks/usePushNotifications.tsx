@@ -68,11 +68,42 @@ export function usePushNotifications() {
     [subscription.enabled]
   );
 
-  // Subscribe to new messages for notifications
+  // Set app badge count
+  const setBadgeCount = useCallback((count: number) => {
+    // Direct API (works when app is in foreground)
+    if ('setAppBadge' in navigator) {
+      if (count > 0) {
+        (navigator as any).setAppBadge(count);
+      } else {
+        (navigator as any).clearAppBadge();
+      }
+    }
+    // Also notify service worker
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SET_BADGE',
+        count,
+      });
+    }
+  }, []);
+
+  // Clear badge when app becomes visible
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden && 'clearAppBadge' in navigator) {
+        (navigator as any).clearAppBadge();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  // Subscribe to new messages for notifications + badge
   useEffect(() => {
     if (!user?.id || !subscription.enabled) return;
 
-    // Listen for new messages not from the current user
+    let unreadCount = 0;
+
     const channel = supabase
       .channel("notifications")
       .on(
@@ -90,10 +121,8 @@ export function usePushNotifications() {
             conversation_id: string;
           };
 
-          // Don't notify for own messages
           if (newMessage.sender_id === user.id) return;
 
-          // Check if the user is a participant in this conversation
           const { data: participant } = await supabase
             .from("conversation_participants")
             .select("id")
@@ -103,9 +132,11 @@ export function usePushNotifications() {
 
           if (!participant) return;
 
-          // Check if page is hidden (app in background)
+          // Increment badge and show notification when in background
           if (document.hidden) {
-            // Get sender name
+            unreadCount++;
+            setBadgeCount(unreadCount);
+
             const { data: sender } = await supabase
               .from("profiles")
               .select("display_name")
@@ -129,7 +160,7 @@ export function usePushNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, subscription.enabled, showNotification]);
+  }, [user?.id, subscription.enabled, showNotification, setBadgeCount]);
 
   return {
     ...subscription,
