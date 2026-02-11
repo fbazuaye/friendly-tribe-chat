@@ -8,7 +8,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import { Smile } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -227,26 +231,29 @@ export function MessageBubble({
                   <Copy className="w-4 h-4 mr-2" />
                   Copy
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
-                  className="p-0 focus:bg-transparent"
-                >
-                  <div className="flex items-center gap-1 px-2 py-1.5 w-full">
-                    {QUICK_EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        className="text-lg hover:scale-125 transition-transform p-0.5 rounded hover:bg-accent"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpen(false);
-                          onReact?.(emoji);
-                        }}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Smile className="w-4 h-4 mr-2" />
+                    React
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="p-2">
+                    <div className="flex items-center gap-1">
+                      {QUICK_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-accent"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpen(false);
+                            onReact?.(emoji);
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
                 <DropdownMenuItem onClick={() => onForward?.()}>
                   <Forward className="w-4 h-4 mr-2" />
                   Forward
