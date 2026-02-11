@@ -74,6 +74,9 @@ export default function Profile() {
   const { role } = useUserRole();
 
   const isAdmin = role === "super_admin" || role === "admin";
+  const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
+  const email = user?.email || "";
+  const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
 
   const handleLogout = async () => {
     await signOut();
@@ -100,7 +103,7 @@ export default function Profile() {
             <Avatar className="w-24 h-24">
               <AvatarImage src="" />
               <AvatarFallback className="text-2xl bg-gradient-primary text-white">
-                JD
+                {initials}
               </AvatarFallback>
             </Avatar>
             <button className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground shadow-lg">
@@ -109,12 +112,12 @@ export default function Profile() {
           </div>
           
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-xl font-semibold">John Doe</h2>
+            <h2 className="text-xl font-semibold">{displayName}</h2>
             <button className="text-muted-foreground hover:text-foreground">
               <Edit2 className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-sm text-muted-foreground mb-4">john.doe@example.com</p>
+          <p className="text-sm text-muted-foreground mb-4">{email}</p>
           
           <TokenBalance showTopUp onTopUp={() => navigate("/profile/tokens")} />
         </div>
