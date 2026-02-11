@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Check, CheckCheck, Reply, Star, Copy, Forward, Smile, Pin, Flag, Trash2, ChevronDown } from "lucide-react";
+import { Check, CheckCheck, Reply, Star, Copy, Forward, Pin, Flag, Trash2, ChevronDown } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -9,11 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,7 +75,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [emojiOpen, setEmojiOpen] = useState(false);
+  
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { toast } = useToast();
 
@@ -96,10 +91,6 @@ export function MessageBubble({
     toast({ title: "Copied to clipboard" });
   };
 
-  const handleReact = (emoji: string) => {
-    setEmojiOpen(false);
-    onReact?.(emoji);
-  };
 
   const handleDelete = () => {
     setDeleteOpen(true);
@@ -236,12 +227,25 @@ export function MessageBubble({
                   <Copy className="w-4 h-4 mr-2" />
                   Copy
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {
-                  setMenuOpen(false);
-                  setTimeout(() => setEmojiOpen(true), 100);
-                }}>
-                  <Smile className="w-4 h-4 mr-2" />
-                  React
+                <DropdownMenuItem
+                  onSelect={(e) => e.preventDefault()}
+                  className="p-0 focus:bg-transparent"
+                >
+                  <div className="flex items-center gap-1 px-2 py-1.5 w-full">
+                    {QUICK_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        className="text-lg hover:scale-125 transition-transform p-0.5 rounded hover:bg-accent"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpen(false);
+                          onReact?.(emoji);
+                        }}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onForward?.()}>
                   <Forward className="w-4 h-4 mr-2" />
@@ -272,29 +276,6 @@ export function MessageBubble({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Emoji picker popover */}
-            <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-              <PopoverTrigger asChild>
-                <span className="absolute top-0 left-0 w-0 h-0" />
-              </PopoverTrigger>
-              <PopoverContent
-                align={isSent ? "end" : "start"}
-                className="w-auto p-2"
-                side="top"
-              >
-                <div className="flex gap-1">
-                  {QUICK_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-accent"
-                      onClick={() => handleReact(emoji)}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
           </div>
 
           {reactions && reactions.length > 0 && (
