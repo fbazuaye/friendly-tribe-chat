@@ -157,3 +157,42 @@ export function useSendMessage() {
     },
   });
 }
+
+export function useDeleteMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
+      const { error } = await supabase
+        .from("messages")
+        .delete()
+        .eq("id", messageId);
+
+      if (error) throw error;
+      return { conversationId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", data.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
+export function useUpdateMessageMetadata() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ messageId, conversationId, metadata }: { messageId: string; conversationId: string; metadata: Record<string, unknown> }) => {
+      const { error } = await supabase
+        .from("messages")
+        .update({ metadata: metadata as unknown as import("@/integrations/supabase/types").Json })
+        .eq("id", messageId);
+
+      if (error) throw error;
+      return { conversationId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", data.conversationId] });
+    },
+  });
+}

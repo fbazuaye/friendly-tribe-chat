@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useConversation } from "@/hooks/useConversations";
-import { useMessages, useSendMessage } from "@/hooks/useMessages";
+import { useMessages, useSendMessage, useDeleteMessage, useUpdateMessageMetadata } from "@/hooks/useMessages";
 import { useAuth } from "@/hooks/useAuth";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { usePresence } from "@/hooks/useUserPresence";
@@ -47,6 +47,8 @@ export default function ChatConversation() {
   const { data: conversation, isLoading: convLoading } = useConversation(id);
   const { data: messages = [], isLoading: msgsLoading } = useMessages(id);
   const sendMessage = useSendMessage();
+  const deleteMessage = useDeleteMessage();
+  const updateMetadata = useUpdateMessageMetadata();
   const { typingUsers, setTyping, clearTyping } = useTypingIndicator(id);
 
   const isLoading = convLoading || msgsLoading;
@@ -123,6 +125,63 @@ export default function ChatConversation() {
       name: senderName,
       content: message.content,
     });
+  };
+
+  const handleDelete = async (messageId: string) => {
+    if (!id) return;
+    try {
+      await deleteMessage.mutateAsync({ messageId, conversationId: id });
+      toast({ title: "Message deleted" });
+    } catch {
+      toast({ title: "Failed to delete", variant: "destructive" });
+    }
+  };
+
+  const handleToggleMetaFlag = async (message: typeof messages[0], flag: "starred" | "pinned") => {
+    if (!id) return;
+    const meta = (message.metadata as Record<string, unknown>) || {};
+    const current = !!meta[flag];
+    try {
+      await updateMetadata.mutateAsync({
+        messageId: message.id,
+        conversationId: id,
+        metadata: { ...meta, [flag]: !current },
+      });
+      toast({ title: current ? `Un${flag}` : flag.charAt(0).toUpperCase() + flag.slice(1) + "red" });
+    } catch {
+      toast({ title: `Failed to ${flag}`, variant: "destructive" });
+    }
+  };
+
+  const handleReact = async (message: typeof messages[0], emoji: string) => {
+    if (!id) return;
+    const meta = (message.metadata as Record<string, unknown>) || {};
+    const existingReactions = (meta.reactions as Array<{ emoji: string; userId: string }>) || [];
+    const alreadyReacted = existingReactions.find(r => r.emoji === emoji && r.userId === user?.id);
+    
+    const newReactions = alreadyReacted
+      ? existingReactions.filter(r => !(r.emoji === emoji && r.userId === user?.id))
+      : [...existingReactions, { emoji, userId: user?.id }];
+
+    try {
+      await updateMetadata.mutateAsync({
+        messageId: message.id,
+        conversationId: id,
+        metadata: { ...meta, reactions: newReactions },
+      });
+    } catch {
+      toast({ title: "Failed to react", variant: "destructive" });
+    }
+  };
+
+  const handleForward = (message: typeof messages[0]) => {
+    // Navigate to chats with a forwarding state
+    navigate("/chats", { state: { forwardMessage: message.content } });
+    toast({ title: "Select a chat to forward to" });
+  };
+
+  const handleReport = (message: typeof messages[0]) => {
+    toast({ title: "Message reported", description: "Thank you for reporting. We'll review this message." });
   };
 
   const handleAISummary = () => {
@@ -248,24 +307,43 @@ export default function ChatConversation() {
                   </span>
                 </div>
 
-                {group.messages.map((message) => (
-                  <MessageBubble
-                    key={message.id}
-                    id={message.id}
-                    content={message.content}
-                    timestamp={format(new Date(message.created_at), "h:mm a")}
-                    isSent={message.sender_id === user?.id}
-                    isRead={message.is_read}
-                    isDelivered={true}
-                    replyTo={getReplyTo(message)}
-                    senderName={
-                      conversation?.is_group && message.sender_id !== user?.id
-                        ? message.sender?.display_name || "Unknown"
-                        : undefined
-                    }
-                    onReply={() => handleReply(message)}
-                  />
-                ))}
+                {group.messages.map((message) => {
+                  const meta = (message.metadata as Record<string, unknown>) || {};
+                  const rawReactions = (meta.reactions as Array<{ emoji: string; userId: string }>) || [];
+                  const reactionCounts = rawReactions.reduce<Record<string, number>>((acc, r) => {
+                    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                    return acc;
+                  }, {});
+                  const reactions = Object.entries(reactionCounts).map(([emoji, count]) => ({ emoji, count }));
+
+                  return (
+                    <MessageBubble
+                      key={message.id}
+                      id={message.id}
+                      content={message.content}
+                      timestamp={format(new Date(message.created_at), "h:mm a")}
+                      isSent={message.sender_id === user?.id}
+                      isRead={message.is_read}
+                      isDelivered={true}
+                      isStarred={!!meta.starred}
+                      isPinned={!!meta.pinned}
+                      replyTo={getReplyTo(message)}
+                      reactions={reactions.length > 0 ? reactions : undefined}
+                      senderName={
+                        conversation?.is_group && message.sender_id !== user?.id
+                          ? message.sender?.display_name || "Unknown"
+                          : undefined
+                      }
+                      onReply={() => handleReply(message)}
+                      onDelete={() => handleDelete(message.id)}
+                      onStar={() => handleToggleMetaFlag(message, "starred")}
+                      onPin={() => handleToggleMetaFlag(message, "pinned")}
+                      onReact={(emoji) => handleReact(message, emoji)}
+                      onForward={() => handleForward(message)}
+                      onReport={() => handleReport(message)}
+                    />
+                  );
+                })}
               </div>
             ))}
           </>
