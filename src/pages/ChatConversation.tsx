@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,7 +11,6 @@ import {
   Video,
   MoreVertical,
   Search,
-  Info,
   Sparkles,
   MessageSquare,
   Loader2,
@@ -30,6 +29,12 @@ import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { usePresence } from "@/hooks/useUserPresence";
 import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 
+interface ReplyTo {
+  id: string;
+  name: string;
+  content: string;
+}
+
 export default function ChatConversation() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -37,6 +42,7 @@ export default function ChatConversation() {
   const { user } = useAuth();
   const { isUserOnline } = usePresence();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
 
   const { data: conversation, isLoading: convLoading } = useConversation(id);
   const { data: messages = [], isLoading: msgsLoading } = useMessages(id);
@@ -45,12 +51,10 @@ export default function ChatConversation() {
 
   const isLoading = convLoading || msgsLoading;
 
-  // Get current user's display name for typing indicator
   const currentUserProfile = conversation?.participants.find(
     (p) => p.user_id === user?.id
   );
 
-  // Get other participant for 1:1 chats
   const otherParticipant = conversation?.participants.find(
     (p) => p.user_id !== user?.id
   );
@@ -75,22 +79,30 @@ export default function ChatConversation() {
     lastSeen: getLastSeenText(),
   };
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSendMessage = async (content: string) => {
     if (!id) return;
-
-    // Clear typing indicator when sending
     clearTyping();
+
+    const metadata: Record<string, unknown> = {};
+    if (replyTo) {
+      metadata.reply_to = {
+        id: replyTo.id,
+        name: replyTo.name,
+        content: replyTo.content,
+      };
+      setReplyTo(null);
+    }
 
     try {
       await sendMessage.mutateAsync({
         conversationId: id,
         content,
         messageType: "text",
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       });
     } catch (error) {
       toast({
@@ -99,6 +111,18 @@ export default function ChatConversation() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleReply = (message: typeof messages[0]) => {
+    const senderName =
+      message.sender_id === user?.id
+        ? "You"
+        : message.sender?.display_name || "Unknown";
+    setReplyTo({
+      id: message.id,
+      name: senderName,
+      content: message.content,
+    });
   };
 
   const handleAISummary = () => {
@@ -130,6 +154,15 @@ export default function ChatConversation() {
     });
 
     return groups;
+  };
+
+  const getReplyTo = (message: typeof messages[0]) => {
+    const meta = message.metadata as Record<string, unknown> | null;
+    if (meta?.reply_to) {
+      const rt = meta.reply_to as { name: string; content: string };
+      return { name: rt.name, content: rt.content };
+    }
+    return undefined;
   };
 
   if (isLoading) {
@@ -209,7 +242,6 @@ export default function ChatConversation() {
           <>
             {groupMessagesByDate().map((group) => (
               <div key={group.date}>
-                {/* Date separator */}
                 <div className="flex justify-center mb-4">
                   <span className="px-3 py-1 text-xs text-muted-foreground bg-secondary rounded-full">
                     {group.date}
@@ -225,11 +257,13 @@ export default function ChatConversation() {
                     isSent={message.sender_id === user?.id}
                     isRead={message.is_read}
                     isDelivered={true}
+                    replyTo={getReplyTo(message)}
                     senderName={
                       conversation?.is_group && message.sender_id !== user?.id
                         ? message.sender?.display_name || "Unknown"
                         : undefined
                     }
+                    onReply={() => handleReply(message)}
                   />
                 ))}
               </div>
@@ -240,15 +274,15 @@ export default function ChatConversation() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Typing Indicator */}
       <TypingIndicator typingUsers={typingUsers} />
 
-      {/* Composer */}
       <MessageComposer
         onSend={handleSendMessage}
         onTyping={() => setTyping(currentUserProfile?.profile?.display_name)}
         disabled={sendMessage.isPending}
         placeholder={sendMessage.isPending ? "Sending..." : "Type a message..."}
+        replyingTo={replyTo ? { name: replyTo.name, content: replyTo.content } : undefined}
+        onCancelReply={() => setReplyTo(null)}
       />
     </div>
   );

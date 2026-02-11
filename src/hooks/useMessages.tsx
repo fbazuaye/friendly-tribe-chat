@@ -128,19 +128,21 @@ interface SendMessageParams {
   recipientId?: string;
   content: string;
   messageType?: "text" | "media" | "voice";
+  metadata?: Record<string, unknown>;
 }
 
 export function useSendMessage() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ conversationId, recipientId, content, messageType = "text" }: SendMessageParams) => {
+    mutationFn: async ({ conversationId, recipientId, content, messageType = "text", metadata }: SendMessageParams) => {
       const { data, error } = await supabase.functions.invoke("send-message", {
         body: {
           conversation_id: conversationId,
           recipient_id: recipientId,
           content,
           message_type: messageType,
+          metadata,
         },
       });
 
