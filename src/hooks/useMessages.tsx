@@ -96,6 +96,49 @@ export function useMessages(conversationId: string | undefined) {
           queryClient.invalidateQueries({ queryKey: ["conversations"] });
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const updatedMessage = payload.new as Message;
+          queryClient.setQueryData(
+            ["messages", conversationId],
+            (old: Message[] | undefined) => {
+              if (!old) return old;
+              return old.map((m) =>
+                m.id === updatedMessage.id
+                  ? { ...m, ...updatedMessage }
+                  : m
+              );
+            }
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          queryClient.setQueryData(
+            ["messages", conversationId],
+            (old: Message[] | undefined) => {
+              if (!old) return old;
+              return old.filter((m) => m.id !== deletedId);
+            }
+          );
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        }
+      )
       .subscribe();
 
     return () => {
