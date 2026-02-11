@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,6 +22,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
 import { useConversation } from "@/hooks/useConversations";
 import { useMessages, useSendMessage, useDeleteMessage, useUpdateMessageMetadata } from "@/hooks/useMessages";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,6 +52,8 @@ export default function ChatConversation() {
   const { isUserOnline } = usePresence();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
+  const [editContent, setEditContent] = useState("");
 
   const { data: conversation, isLoading: convLoading } = useConversation(id);
   const { data: messages = [], isLoading: msgsLoading } = useMessages(id);
@@ -182,6 +193,32 @@ export default function ChatConversation() {
 
   const handleReport = (message: typeof messages[0]) => {
     toast({ title: "Message reported", description: "Thank you for reporting. We'll review this message." });
+  };
+
+  const handleEdit = (message: typeof messages[0]) => {
+    setEditingMessage({ id: message.id, content: message.content });
+    setEditContent(message.content);
+  };
+
+  const confirmEdit = async () => {
+    if (!editingMessage || !id || !editContent.trim()) return;
+    try {
+      const meta = messages.find(m => m.id === editingMessage.id)?.metadata as Record<string, unknown> || {};
+      await updateMetadata.mutateAsync({
+        messageId: editingMessage.id,
+        conversationId: id,
+        metadata: { ...meta, edited: true },
+      });
+      const { error } = await supabase
+        .from("messages")
+        .update({ content: editContent.trim(), metadata: { ...meta, edited: true } })
+        .eq("id", editingMessage.id);
+      if (error) throw error;
+      toast({ title: "Message edited" });
+      setEditingMessage(null);
+    } catch {
+      toast({ title: "Failed to edit", variant: "destructive" });
+    }
   };
 
   const handleAISummary = () => {
@@ -327,6 +364,7 @@ export default function ChatConversation() {
                       isDelivered={true}
                       isStarred={!!meta.starred}
                       isPinned={!!meta.pinned}
+                      isEdited={!!meta.edited}
                       replyTo={getReplyTo(message)}
                       reactions={reactions.length > 0 ? reactions : undefined}
                       senderName={
@@ -341,6 +379,7 @@ export default function ChatConversation() {
                       onReact={(emoji) => handleReact(message, emoji)}
                       onForward={() => handleForward(message)}
                       onReport={() => handleReport(message)}
+                      onEdit={() => handleEdit(message)}
                     />
                   );
                 })}
@@ -362,6 +401,25 @@ export default function ChatConversation() {
         replyingTo={replyTo ? { name: replyTo.name, content: replyTo.content } : undefined}
         onCancelReply={() => setReplyTo(null)}
       />
+
+      {/* Edit message dialog */}
+      <Dialog open={!!editingMessage} onOpenChange={(open) => !open && setEditingMessage(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit message</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && confirmEdit()}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingMessage(null)}>Cancel</Button>
+            <Button onClick={confirmEdit} disabled={!editContent.trim()}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
