@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Check, CheckCheck, Reply, Star, Copy, Forward, Pin, Flag, Trash2, ChevronDown } from "lucide-react";
+import { Check, CheckCheck, Reply, Star, Copy, Forward, Pin, Flag, Trash2, ChevronDown, Pencil } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -36,6 +36,7 @@ interface MessageBubbleProps {
   isDelivered?: boolean;
   isStarred?: boolean;
   isPinned?: boolean;
+  isEdited?: boolean;
   senderName?: string;
   senderAvatar?: string;
   replyTo?: {
@@ -54,6 +55,7 @@ interface MessageBubbleProps {
   onPin?: () => void;
   onReport?: () => void;
   onDelete?: () => void;
+  onEdit?: () => void;
 }
 
 export function MessageBubble({
@@ -64,6 +66,7 @@ export function MessageBubble({
   isDelivered = false,
   isStarred = false,
   isPinned = false,
+  isEdited = false,
   senderName,
   senderAvatar,
   replyTo,
@@ -76,6 +79,7 @@ export function MessageBubble({
   onPin,
   onReport,
   onDelete,
+  onEdit,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -181,6 +185,14 @@ export function MessageBubble({
                 {isPinned && (
                   <Pin className="w-3 h-3 text-muted-foreground" />
                 )}
+                {isEdited && (
+                  <span className={cn(
+                    "text-[10px] italic",
+                    isSent ? "text-white/50" : "text-muted-foreground"
+                  )}>
+                    edited
+                  </span>
+                )}
                 <span className={cn(
                   "text-[10px]",
                   isSent ? "text-white/60" : "text-muted-foreground"
@@ -254,6 +266,12 @@ export function MessageBubble({
                     </div>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
+                {isSent && (
+                  <DropdownMenuItem onClick={() => onEdit?.()}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => onForward?.()}>
                   <Forward className="w-4 h-4 mr-2" />
                   Forward
