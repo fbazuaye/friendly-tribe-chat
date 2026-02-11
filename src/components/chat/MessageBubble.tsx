@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Check, CheckCheck, Reply, Star, Copy } from "lucide-react";
+import { Check, CheckCheck, Reply, Star, Copy, Forward, Smile, Pin, Flag, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
@@ -30,6 +31,12 @@ interface MessageBubbleProps {
   }>;
   showSender?: boolean;
   onReply?: () => void;
+  onForward?: () => void;
+  onStar?: () => void;
+  onReact?: () => void;
+  onPin?: () => void;
+  onReport?: () => void;
+  onDelete?: () => void;
 }
 
 export function MessageBubble({
@@ -45,6 +52,12 @@ export function MessageBubble({
   reactions,
   showSender = false,
   onReply,
+  onForward,
+  onStar,
+  onReact,
+  onPin,
+  onReport,
+  onDelete,
 }: MessageBubbleProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
@@ -61,6 +74,14 @@ export function MessageBubble({
     toast({ title: "Copied to clipboard" });
   };
 
+  const handleAction = (action: (() => void) | undefined, label: string) => {
+    if (action) {
+      action();
+    } else {
+      toast({ title: label, description: "Coming soon" });
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -68,7 +89,6 @@ export function MessageBubble({
         isSent ? "ml-auto flex-row-reverse" : "mr-auto"
       )}
     >
-      {/* Avatar for received messages in groups */}
       {!isSent && showSender && (
         <Avatar className="w-8 h-8 flex-shrink-0 mt-auto">
           <AvatarImage src={senderAvatar} alt={senderName} />
@@ -79,14 +99,12 @@ export function MessageBubble({
       )}
 
       <div className={cn("flex flex-col gap-1", isSent ? "items-end" : "items-start")}>
-        {/* Sender name */}
         {!isSent && showSender && senderName && (
           <span className="text-xs font-medium text-primary px-1">
             {senderName}
           </span>
         )}
 
-        {/* Message bubble with context menu */}
         <DropdownMenu open={open} onOpenChange={setOpen}>
           <DropdownMenuTrigger asChild>
             <div
@@ -99,7 +117,6 @@ export function MessageBubble({
                 setOpen(true);
               }}
             >
-              {/* Reply preview */}
               {replyTo && (
                 <div className={cn(
                   "flex items-center gap-2 mb-2 pb-2 border-b",
@@ -123,12 +140,10 @@ export function MessageBubble({
                 </div>
               )}
 
-              {/* Message content */}
               <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
                 {content}
               </p>
 
-              {/* Timestamp and status */}
               <div className={cn(
                 "flex items-center gap-1 mt-1",
                 isSent ? "justify-end" : "justify-start"
@@ -157,8 +172,8 @@ export function MessageBubble({
             </div>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent align={isSent ? "end" : "start"} className="w-44">
-            <DropdownMenuItem onClick={() => onReply?.()}>
+          <DropdownMenuContent align={isSent ? "end" : "start"} className="w-48 bg-popover z-50">
+            <DropdownMenuItem onClick={() => handleAction(onReply, "Reply")}>
               <Reply className="w-4 h-4 mr-2" />
               Reply
             </DropdownMenuItem>
@@ -166,10 +181,39 @@ export function MessageBubble({
               <Copy className="w-4 h-4 mr-2" />
               Copy
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAction(onReact, "React")}>
+              <Smile className="w-4 h-4 mr-2" />
+              React
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAction(onForward, "Forward")}>
+              <Forward className="w-4 h-4 mr-2" />
+              Forward
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAction(onPin, "Pin")}>
+              <Pin className="w-4 h-4 mr-2" />
+              Pin
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAction(onStar, "Star")}>
+              <Star className="w-4 h-4 mr-2" />
+              {isStarred ? "Unstar" : "Star"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {!isSent && (
+              <DropdownMenuItem onClick={() => handleAction(onReport, "Report")}>
+                <Flag className="w-4 h-4 mr-2" />
+                Report
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => handleAction(onDelete, "Delete")}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Reactions */}
         {reactions && reactions.length > 0 && (
           <div className="flex flex-wrap gap-1 px-1">
             {reactions.map((reaction, index) => (
