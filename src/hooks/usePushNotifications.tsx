@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
-interface PushSubscription {
+interface PushSubscriptionState {
   supported: boolean;
   permission: NotificationPermission | null;
   enabled: boolean;
@@ -11,7 +11,8 @@ interface PushSubscription {
 export function usePushNotifications(totalUnreadCount?: number) {
   const { user } = useAuth();
   const mountedRef = useRef(true);
-  const [subscription, setSubscription] = useState<PushSubscription>({
+  const subscribedRef = useRef(false);
+  const [subscription, setSubscription] = useState<PushSubscriptionState>({
     supported: false,
     permission: null,
     enabled: false,
@@ -37,6 +38,87 @@ export function usePushNotifications(totalUnreadCount?: number) {
       }));
     }
   }, []);
+
+  // Save push subscription to database
+  const savePushSubscription = useCallback(async (pushSub: PushSubscription) => {
+    if (!user?.id) return;
+
+    const subJson = pushSub.toJSON();
+    const endpoint = subJson.endpoint!;
+    const p256dh = subJson.keys?.p256dh || '';
+    const auth = subJson.keys?.auth || '';
+
+    try {
+      // Upsert the subscription
+      const { error } = await supabase
+        .from('push_subscriptions' as any)
+        .upsert(
+          {
+            user_id: user.id,
+            endpoint,
+            p256dh,
+            auth,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,endpoint' }
+        );
+
+      if (error) {
+        console.error('Error saving push subscription:', error);
+      } else {
+        console.log('Push subscription saved successfully');
+      }
+    } catch (err) {
+      console.error('Error saving push subscription:', err);
+    }
+  }, [user?.id]);
+
+  // Subscribe to Web Push when permission is granted
+  const subscribeToPush = useCallback(async () => {
+    if (subscribedRef.current || !user?.id) return;
+
+    try {
+      const registration = await navigator.serviceWorker.ready as any;
+
+      // Get VAPID public key from environment
+      const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+      if (!vapidPublicKey) {
+        console.warn('VAPID public key not configured, skipping push subscription');
+        return;
+      }
+
+      // Check for existing subscription
+      let pushSub = await registration.pushManager.getSubscription();
+
+      if (!pushSub) {
+        // Convert base64url VAPID key to Uint8Array
+        const padding = '='.repeat((4 - (vapidPublicKey.length % 4)) % 4);
+        const base64 = (vapidPublicKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = atob(base64);
+        const applicationServerKey = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; i++) {
+          applicationServerKey[i] = rawData.charCodeAt(i);
+        }
+
+        pushSub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      }
+
+      await savePushSubscription(pushSub);
+      subscribedRef.current = true;
+    } catch (err) {
+      console.error('Failed to subscribe to push:', err);
+    }
+  }, [user?.id, savePushSubscription]);
+
+  // Auto-subscribe when permission is granted
+  useEffect(() => {
+    if (subscription.enabled && user?.id) {
+      subscribeToPush();
+    }
+  }, [subscription.enabled, user?.id, subscribeToPush]);
 
   const requestPermission = useCallback(async () => {
     if (!subscription.supported) return false;
@@ -96,109 +178,6 @@ export function usePushNotifications(totalUnreadCount?: number) {
       setBadgeCount(totalUnreadCount);
     }
   }, [totalUnreadCount, setBadgeCount]);
-
-  // Subscribe to new messages for push notifications (not badge - badge is now driven by totalUnreadCount)
-  useEffect(() => {
-    if (!user?.id || !subscription.enabled) return;
-
-    const channel = supabase
-      .channel("notifications")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-        },
-        async (payload) => {
-          const newMessage = payload.new as {
-            id: string;
-            sender_id: string;
-            content: string;
-            conversation_id: string;
-          };
-
-          if (newMessage.sender_id === user.id) return;
-
-          const { data: participant } = await supabase
-            .from("conversation_participants")
-            .select("id")
-            .eq("conversation_id", newMessage.conversation_id)
-            .eq("user_id", user.id)
-            .single();
-
-          if (!participant) return;
-
-          if (document.hidden) {
-            const { data: sender } = await supabase
-              .from("profiles")
-              .select("display_name")
-              .eq("id", newMessage.sender_id)
-              .single();
-
-            showNotification(sender?.display_name || "New message", {
-              body: newMessage.content.slice(0, 100),
-              icon: "/icon-192.png",
-              badge: "/icon-192.png",
-              tag: newMessage.conversation_id,
-              data: {
-                url: `/chat/${newMessage.conversation_id}`,
-              },
-            });
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "broadcast_messages",
-        },
-        async (payload) => {
-          const newMsg = payload.new as {
-            id: string;
-            sender_id: string;
-            content: string;
-            channel_id: string;
-          };
-
-          if (newMsg.sender_id === user.id) return;
-
-          const { data: sub } = await supabase
-            .from("broadcast_subscribers")
-            .select("id")
-            .eq("channel_id", newMsg.channel_id)
-            .eq("user_id", user.id)
-            .single();
-
-          if (!sub) return;
-
-          if (document.hidden) {
-            const { data: channel } = await supabase
-              .from("broadcast_channels")
-              .select("name")
-              .eq("id", newMsg.channel_id)
-              .single();
-
-            showNotification(channel?.name || "Broadcast", {
-              body: newMsg.content.slice(0, 100),
-              icon: "/icon-192.png",
-              badge: "/icon-192.png",
-              tag: `broadcast-${newMsg.channel_id}`,
-              data: {
-                url: `/broadcasts/${newMsg.channel_id}`,
-              },
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id, subscription.enabled, showNotification]);
 
   return {
     ...subscription,
