@@ -120,17 +120,12 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Notification click - clear badge when user opens the app
+// Notification click - open the app (badge is managed by BadgeSync based on real unread count)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   
   if (event.action === 'close') return;
 
-  // Clear badge when user interacts with notification
-  if (navigator.clearAppBadge) {
-    navigator.clearAppBadge();
-  }
-  
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((clientList) => {
       for (const client of clientList) {
