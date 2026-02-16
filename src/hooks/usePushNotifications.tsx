@@ -8,7 +8,7 @@ interface PushSubscription {
   enabled: boolean;
 }
 
-export function usePushNotifications() {
+export function usePushNotifications(totalUnreadCount?: number) {
   const { user } = useAuth();
   const mountedRef = useRef(true);
   const [subscription, setSubscription] = useState<PushSubscription>({
@@ -23,7 +23,6 @@ export function usePushNotifications() {
   }, []);
 
   useEffect(() => {
-    // Check if push notifications are supported
     const supported =
       "Notification" in window &&
       "serviceWorker" in navigator &&
@@ -62,14 +61,12 @@ export function usePushNotifications() {
     (title: string, options?: NotificationOptions) => {
       if (!subscription.enabled) return;
 
-      // Use service worker to show notification if app is in background
       if (navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
           type: "SHOW_NOTIFICATION",
           payload: { title, ...options },
         });
       } else {
-        // Fallback to direct notification
         new Notification(title, options);
       }
     },
@@ -78,7 +75,6 @@ export function usePushNotifications() {
 
   // Set app badge count
   const setBadgeCount = useCallback((count: number) => {
-    // Direct API (works when app is in foreground)
     if ('setAppBadge' in navigator) {
       if (count > 0) {
         (navigator as any).setAppBadge(count);
@@ -86,7 +82,6 @@ export function usePushNotifications() {
         (navigator as any).clearAppBadge();
       }
     }
-    // Also notify service worker
     if (navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({
         type: 'SET_BADGE',
@@ -95,22 +90,16 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Clear badge when app becomes visible
+  // Sync badge with real unread count from database
   useEffect(() => {
-    const handleVisibility = () => {
-      if (!document.hidden && 'clearAppBadge' in navigator) {
-        (navigator as any).clearAppBadge();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
+    if (totalUnreadCount !== undefined) {
+      setBadgeCount(totalUnreadCount);
+    }
+  }, [totalUnreadCount, setBadgeCount]);
 
-  // Subscribe to new messages for notifications + badge
+  // Subscribe to new messages for push notifications (not badge - badge is now driven by totalUnreadCount)
   useEffect(() => {
     if (!user?.id || !subscription.enabled) return;
-
-    let unreadCount = 0;
 
     const channel = supabase
       .channel("notifications")
@@ -141,9 +130,6 @@ export function usePushNotifications() {
           if (!participant) return;
 
           if (document.hidden) {
-            unreadCount++;
-            setBadgeCount(unreadCount);
-
             const { data: sender } = await supabase
               .from("profiles")
               .select("display_name")
@@ -179,7 +165,6 @@ export function usePushNotifications() {
 
           if (newMsg.sender_id === user.id) return;
 
-          // Check if user is subscribed to this channel
           const { data: sub } = await supabase
             .from("broadcast_subscribers")
             .select("id")
@@ -190,9 +175,6 @@ export function usePushNotifications() {
           if (!sub) return;
 
           if (document.hidden) {
-            unreadCount++;
-            setBadgeCount(unreadCount);
-
             const { data: channel } = await supabase
               .from("broadcast_channels")
               .select("name")
@@ -216,7 +198,7 @@ export function usePushNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, subscription.enabled, showNotification, setBadgeCount]);
+  }, [user?.id, subscription.enabled, showNotification]);
 
   return {
     ...subscription,
