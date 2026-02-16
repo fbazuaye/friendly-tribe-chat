@@ -80,12 +80,8 @@ export function usePushNotifications(totalUnreadCount?: number) {
     try {
       const registration = await navigator.serviceWorker.ready as any;
 
-      // Get VAPID public key from environment
-      const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-      if (!vapidPublicKey) {
-        console.warn('VAPID public key not configured, skipping push subscription');
-        return;
-      }
+      // VAPID public key (this is a public key, safe to include in client code)
+      const vapidPublicKey = 'BDQLr1uyXMfbs1VcsjjLI_TeSd1xiSxXVPslb4dzmbOqIvd1tUFY_z8wNDkQ0Ow2Tve_AdlYa3u_7XBI0rKJemY';
 
       // Check for existing subscription
       let pushSub = await registration.pushManager.getSubscription();
