@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { PresenceProvider } from "@/hooks/useUserPresence";
 import { NotificationPrompt } from "@/components/notifications/NotificationPrompt";
+import { BadgeSync } from "@/components/notifications/BadgeSync";
 import { RequireOrganization } from "@/components/auth/RequireOrganization";
 import Welcome from "./pages/Welcome";
 import Auth from "./pages/Auth";
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
             <NotificationPrompt />
+            <BadgeSync />
           </BrowserRouter>
         </TooltipProvider>
       </PresenceProvider>
