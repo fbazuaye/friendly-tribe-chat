@@ -270,6 +270,23 @@ Deno.serve(async (req) => {
       .update({ updated_at: new Date().toISOString() })
       .eq("id", targetConversationId);
 
+    // Send push notification (fire-and-forget, don't block response)
+    try {
+      await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          type: "message",
+          record: message,
+        }),
+      });
+    } catch (pushError) {
+      console.warn("Push notification failed (non-blocking):", pushError);
+    }
+
     console.log(`Message sent successfully. Consumed ${tokenCost} tokens. New balance: ${balanceAfter}`);
 
     return new Response(
