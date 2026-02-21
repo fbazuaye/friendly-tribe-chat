@@ -251,10 +251,12 @@ export function useCreateCommunity() {
     mutationFn: async ({
       name,
       description,
+      avatar_url,
       memberIds,
     }: {
       name: string;
       description?: string;
+      avatar_url?: string;
       memberIds: string[];
     }) => {
       if (!user) throw new Error("Not authenticated");
@@ -274,6 +276,7 @@ export function useCreateCommunity() {
         .insert({
           name,
           description: description || null,
+          avatar_url: avatar_url || null,
           organization_id: profile.organization_id,
           created_by: user.id,
         })

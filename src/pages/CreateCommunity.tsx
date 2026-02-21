@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Camera, Loader2, Users } from "lucide-react";
 import { useCreateCommunity } from "@/hooks/useCommunities";
@@ -12,6 +11,7 @@ import { useOrganizationUsers } from "@/hooks/useOrganizationUsers";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function CreateCommunity() {
   const navigate = useNavigate();
@@ -19,11 +19,15 @@ export default function CreateCommunity() {
   const { toast } = useToast();
   const { users, loading: usersLoading } = useOrganizationUsers();
   const createCommunity = useCreateCommunity();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [memberSearch, setMemberSearch] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const otherUsers = users.filter((u) => u.id !== user?.id);
   const filteredUsers = otherUsers.filter((u) =>
@@ -38,6 +42,17 @@ export default function CreateCommunity() {
     );
   };
 
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Image must be under 2MB", variant: "destructive" });
+      return;
+    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
   const handleCreate = async () => {
     if (!name.trim()) {
       toast({ title: "Name required", variant: "destructive" });
@@ -45,9 +60,27 @@ export default function CreateCommunity() {
     }
 
     try {
+      setUploading(true);
+      let avatar_url: string | undefined;
+
+      if (avatarFile && user) {
+        const ext = avatarFile.name.split(".").pop();
+        const path = `${user.id}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("community-avatars")
+          .upload(path, avatarFile);
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from("community-avatars")
+          .getPublicUrl(path);
+        avatar_url = urlData.publicUrl;
+      }
+
       const community = await createCommunity.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
+        avatar_url,
         memberIds: selectedMembers,
       });
       toast({ title: "Community created!" });
@@ -58,6 +91,8 @@ export default function CreateCommunity() {
         description: error instanceof Error ? error.message : "Try again",
         variant: "destructive",
       });
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -73,10 +108,10 @@ export default function CreateCommunity() {
           <div className="flex-1" />
           <Button
             onClick={handleCreate}
-            disabled={!name.trim() || createCommunity.isPending}
+            disabled={!name.trim() || createCommunity.isPending || uploading}
             className="bg-gradient-primary hover:opacity-90"
           >
-            {createCommunity.isPending ? (
+            {createCommunity.isPending || uploading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               "Create"
@@ -88,13 +123,28 @@ export default function CreateCommunity() {
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {/* Avatar & Name */}
         <div className="flex items-center gap-4">
-          <div className="relative">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="relative group"
+          >
             <Avatar className="w-16 h-16">
+              {avatarPreview && <AvatarImage src={avatarPreview} alt="Community avatar" />}
               <AvatarFallback className="bg-accent text-accent-foreground text-xl">
                 {name ? name.slice(0, 2).toUpperCase() : <Camera className="w-6 h-6" />}
               </AvatarFallback>
             </Avatar>
-          </div>
+            <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Camera className="w-5 h-5 text-white" />
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarSelect}
+            />
+          </button>
           <div className="flex-1">
             <Input
               placeholder="Community name"
