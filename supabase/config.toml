@@ -18,5 +18,5 @@ verify_jwt = false
 [functions.send-push-notification]
 verify_jwt = false
 
-[functions.send-push-notification]
+[functions.ai-chat]
 verify_jwt = false
