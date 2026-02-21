@@ -22,6 +22,8 @@ import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/AdminDashboard";
 import BulkSMS from "./pages/BulkSMS";
+import CreateCommunity from "./pages/CreateCommunity";
+import CommunityChat from "./pages/CommunityChat";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,7 +48,8 @@ const App = () => (
               <Route path="/chat/new" element={<RequireOrganization><ChatConversation /></RequireOrganization>} />
               
               <Route path="/communities" element={<RequireOrganization><Communities /></RequireOrganization>} />
-              <Route path="/community/:id" element={<RequireOrganization><Communities /></RequireOrganization>} />
+              <Route path="/community/create" element={<RequireOrganization><CreateCommunity /></RequireOrganization>} />
+              <Route path="/community/:id" element={<RequireOrganization><CommunityChat /></RequireOrganization>} />
               
               <Route path="/broadcasts" element={<RequireOrganization><Broadcasts /></RequireOrganization>} />
               <Route path="/broadcasts/discover" element={<RequireOrganization><DiscoverChannels /></RequireOrganization>} />
