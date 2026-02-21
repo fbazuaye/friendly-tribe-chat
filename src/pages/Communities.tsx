@@ -2,25 +2,16 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Plus, Users, Crown, ChevronRight, Settings } from "lucide-react";
+import { Search, Plus, Users, Crown, ChevronRight, Settings, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useCommunities } from "@/hooks/useCommunities";
 
 export default function Communities() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Empty state - no mock data
-  const communities: Array<{
-    id: string;
-    name: string;
-    members: number;
-    avatar: string;
-    description: string;
-    isAdmin: boolean;
-    unread: number;
-  }> = [];
+  const { data: communities = [], isLoading } = useCommunities();
 
   const filteredCommunities = communities.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -52,7 +43,11 @@ export default function Communities() {
       </header>
 
       {/* Community list */}
-      {filteredCommunities.length > 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : filteredCommunities.length > 0 ? (
         <div className="p-4 space-y-3">
           {filteredCommunities.map((community) => (
             <button
@@ -65,7 +60,7 @@ export default function Communities() {
               )}
             >
               <Avatar className="w-14 h-14">
-                <AvatarImage src={community.avatar} />
+                <AvatarImage src={community.avatar_url || ""} />
                 <AvatarFallback className="bg-accent text-accent-foreground text-lg">
                   {community.name.slice(0, 2).toUpperCase()}
                 </AvatarFallback>
@@ -74,16 +69,18 @@ export default function Communities() {
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-semibold truncate">{community.name}</span>
-                  {community.isAdmin && (
+                  {community.is_admin && (
                     <Crown className="w-4 h-4 text-warning flex-shrink-0" />
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground truncate mb-1">
-                  {community.description}
-                </p>
+                {community.description && (
+                  <p className="text-sm text-muted-foreground truncate mb-1">
+                    {community.description}
+                  </p>
+                )}
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Users className="w-3 h-3" />
-                  <span>{community.members.toLocaleString()} members</span>
+                  <span>{community.member_count.toLocaleString()} members</span>
                 </div>
               </div>
 
