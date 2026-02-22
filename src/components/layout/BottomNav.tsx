@@ -3,10 +3,11 @@ import { Link, useLocation } from "react-router-dom";
 import { MessageCircle, Users, Radio, User, Sparkles } from "lucide-react";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { useUnreadBroadcastCount } from "@/hooks/useUnreadBroadcastCount";
+import { useUnreadCommunityCount } from "@/hooks/useUnreadCommunityCount";
 
 const navItems = [
   { path: "/chats", icon: MessageCircle, label: "Chats", badgeKey: "chats" as const },
-  { path: "/communities", icon: Users, label: "Communities" },
+  { path: "/communities", icon: Users, label: "Communities", badgeKey: "communities" as const },
   { path: "/broadcasts", icon: Radio, label: "Broadcasts", badgeKey: "broadcasts" as const },
   { path: "/ai", icon: Sparkles, label: "AI" },
   { path: "/profile", icon: User, label: "Profile" },
@@ -16,10 +17,12 @@ export function BottomNav() {
   const location = useLocation();
   const unreadCount = useUnreadCount();
   const unreadBroadcastCount = useUnreadBroadcastCount();
+  const unreadCommunityCount = useUnreadCommunityCount();
 
-  const getBadgeCount = (badgeKey?: "chats" | "broadcasts") => {
+  const getBadgeCount = (badgeKey?: "chats" | "broadcasts" | "communities") => {
     if (badgeKey === "chats") return unreadCount;
     if (badgeKey === "broadcasts") return unreadBroadcastCount;
+    if (badgeKey === "communities") return unreadCommunityCount;
     return 0;
   };
 

@@ -228,30 +228,31 @@ export default function CommunityChat() {
                   {group.date}
                 </span>
               </div>
-              {group.messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  id={message.id}
-                  content={message.content}
-                  timestamp={format(new Date(message.created_at), "h:mm a")}
-                  isSent={message.sender_id === user?.id}
-                  isRead={true}
-                  isDelivered={true}
-                  senderName={
-                    message.sender_id !== user?.id
-                      ? message.sender?.display_name || "Unknown"
-                      : undefined
-                  }
-                  onReply={() => {}}
-                  onDelete={() => {}}
-                  onStar={() => {}}
-                  onPin={() => {}}
-                  onReact={() => {}}
-                  onForward={() => {}}
-                  onReport={() => {}}
-                  onEdit={() => {}}
-                />
-              ))}
+              {group.messages.map((message) => {
+                const isOther = message.sender_id !== user?.id;
+                return (
+                  <MessageBubble
+                    key={message.id}
+                    id={message.id}
+                    content={message.content}
+                    timestamp={format(new Date(message.created_at), "h:mm a")}
+                    isSent={!isOther}
+                    isRead={true}
+                    isDelivered={true}
+                    showSender={isOther}
+                    senderName={isOther ? message.sender?.display_name || "Unknown" : undefined}
+                    senderAvatar={isOther ? message.sender?.avatar_url || undefined : undefined}
+                    onReply={() => {}}
+                    onDelete={() => {}}
+                    onStar={() => {}}
+                    onPin={() => {}}
+                    onReact={() => {}}
+                    onForward={() => {}}
+                    onReport={() => {}}
+                    onEdit={() => {}}
+                  />
+                );
+              })}
             </div>
           ))
         )}
