@@ -1,44 +1,47 @@
 
 
-# Add Community Badge Notification and Sender Profiles
+# Fix Home Screen Icon Badge (VAPID Key Mismatch)
 
-## What You'll Get
+## The Problem
 
-1. **Unread badge on the Communities tab** -- just like the Chats and Broadcasts tabs already have, the Communities icon in the bottom navigation will show a red badge with the total number of unread community messages.
+The home screen icon badge only updates while the app is open. When the app is closed, it should be updated via push notifications, but **all push notifications are failing** with a 403 error:
 
-2. **Sender profile shown on each message** -- in the community group chat, every message from another member will display their avatar and name next to the message bubble, so you can clearly see who sent it.
+> "the VAPID credentials in the authorization header do not correspond to the credentials used to create the subscriptions"
 
----
+This means the VAPID keys on the server no longer match the keys used when users originally subscribed. All existing push subscriptions in the database are invalid.
 
-## Changes
+## The Fix
 
-### 1. Create `useUnreadCommunityCount` hook
-A new hook (similar to the existing `useUnreadBroadcastCount`) that:
-- Queries all communities the user is a member of
-- Counts messages newer than the user's `last_read_at` for each community
-- Subscribes to realtime `INSERT` events on `community_messages` so the badge updates instantly
-- Returns the total unread community message count
+### Step 1: Generate new VAPID keys and update secrets
 
-### 2. Update Bottom Navigation (`BottomNav.tsx`)
-- Import the new `useUnreadCommunityCount` hook
-- Add `badgeKey: "communities"` to the Communities nav item
-- Wire up `getBadgeCount` to return the community unread count when `badgeKey` is `"communities"`
+- Generate a fresh pair of VAPID keys
+- Update the backend secrets (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`) with the new values
+- Update the public key in `src/hooks/usePushNotifications.tsx`
 
-### 3. Update `BadgeSync` component
-- Include the community unread count in the total PWA app badge count (chats + broadcasts + communities)
+### Step 2: Clear all stale push subscriptions
 
-### 4. Update Community Chat page (`CommunityChat.tsx`)
-- Pass `showSender={true}` and `senderAvatar` to the `MessageBubble` component for messages from other members
-- The `MessageBubble` component already supports `showSender`, `senderName`, and `senderAvatar` props -- they just aren't being used for community messages yet
-- Each received message will show the sender's avatar and display name above/beside the bubble
+- Run a database migration to truncate the `push_subscriptions` table, since every existing subscription was created with the old (mismatched) key and will never work
 
----
+### Step 3: Force users to re-subscribe on next visit
+
+- Update `usePushNotifications.tsx` to always check if the current subscription's `applicationServerKey` matches the new VAPID key
+- If it doesn't match, unsubscribe the old one and create a new subscription with the correct key
+- This ensures users automatically get a fresh, working subscription on their next app visit
+
+### Step 4: Update service worker push handler to also set badge
+
+- In `public/sw.js`, update the `push` event handler to call `self.registration.setAppBadge()` (if available) when a push notification arrives, so the home screen badge updates even when the app is closed
+
+## What This Solves
+
+- Push notifications will start working again (no more 403 errors)
+- Home screen icon badge will update in real-time, even when the app is closed
+- Existing users will automatically re-subscribe on their next visit -- no action needed from them
 
 ## Technical Details
 
-- **New file**: `src/hooks/useUnreadCommunityCount.tsx` -- mirrors the pattern from `useUnreadBroadcastCount`, querying `community_members` for `last_read_at` and counting newer rows in `community_messages`
-- **BottomNav.tsx**: Add `"communities"` to the `badgeKey` union type and handle it in `getBadgeCount`
-- **BadgeSync.tsx**: Import `useUnreadCommunityCount` and add it to the `totalUnread` sum
-- **CommunityChat.tsx**: Pass `showSender={true}` and `senderAvatar={message.sender?.avatar_url}` to `MessageBubble` for received messages
-- No database or migration changes needed -- all the data (`last_read_at`, `community_messages`, sender profiles) already exists
+- **`src/hooks/usePushNotifications.tsx`**: Replace hardcoded VAPID public key with new one; add logic to detect stale subscriptions (wrong applicationServerKey) and re-subscribe
+- **`public/sw.js`**: Add `self.registration.setAppBadge()` call inside the `push` event listener
+- **Database migration**: `TRUNCATE TABLE public.push_subscriptions;` to clear all invalid subscriptions
+- **Backend secrets**: Update `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` -- you will be prompted to enter the new values
 
