@@ -117,7 +117,13 @@ self.addEventListener('push', (event) => {
   };
   
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title, options).then(() => {
+      // Update the home screen icon badge when a push arrives
+      if (self.registration.setAppBadge) {
+        // We don't know the exact count, but setting at least 1 shows the badge
+        self.registration.setAppBadge();
+      }
+    })
   );
 });
 
