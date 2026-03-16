@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Users, Plus, Trash2, Upload, Loader2, FileUp, Mail, Send } from "lucide-react";
+import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuth } from "@/hooks/useAuth";
@@ -118,40 +119,25 @@ export function SMSContactManager() {
     setAdding(false);
   };
 
-  const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !organizationId || !user) return;
+  const processRows = async (headers: string[], dataRows: string[][]) => {
+    if (!organizationId || !user) return;
 
-    setAdding(true);
-    const text = await file.text();
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l);
-
-    if (lines.length < 2) {
-      toast.error("CSV file is empty or has no data rows");
-      setAdding(false);
-      return;
-    }
-
-    // Parse header to find columns
-    const header = lines[0].toLowerCase().split(",").map((h) => h.trim().replace(/"/g, ""));
+    const header = headers.map((h) => h.toLowerCase().trim());
     const phoneIdx = header.findIndex((h) => h.includes("phone") || h.includes("mobile") || h.includes("tel") || h.includes("number"));
     const nameIdx = header.findIndex((h) => h.includes("name") || h.includes("full"));
     const emailIdx = header.findIndex((h) => h.includes("email") || h.includes("mail"));
 
     if (phoneIdx === -1) {
-      toast.error("CSV must have a column with 'phone', 'mobile', or 'number' in the header");
-      setAdding(false);
+      toast.error("File must have a column with 'phone', 'mobile', or 'number' in the header");
       return;
     }
 
     const rows: any[] = [];
     let skipped = 0;
 
-    for (let i = 1; i < lines.length; i++) {
-      const cols = parseCSVLine(lines[i]);
+    for (const cols of dataRows) {
       const phone = cols[phoneIdx]?.trim();
       if (!phone) { skipped++; continue; }
-
       rows.push({
         organization_id: organizationId,
         phone_number: phone,
@@ -162,29 +148,58 @@ export function SMSContactManager() {
     }
 
     if (rows.length === 0) {
-      toast.error("No valid contacts found in CSV");
-      setAdding(false);
+      toast.error("No valid contacts found in file");
       return;
     }
 
-    // Batch insert in chunks of 500
     let imported = 0;
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
       const { error } = await supabase.from("sms_contacts").upsert(chunk, {
         onConflict: "organization_id,phone_number",
       });
-      if (error) {
-        console.error("CSV import error:", error);
-      } else {
-        imported += chunk.length;
-      }
+      if (!error) imported += chunk.length;
+      else console.error("Import error:", error);
     }
 
     toast.success(`${imported} contact(s) imported${skipped > 0 ? `, ${skipped} skipped` : ""}`);
     fetchContacts();
-    setAdding(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !organizationId || !user) return;
+
+    setAdding(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+
+      if (ext === "csv") {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l);
+        if (lines.length < 2) { toast.error("File is empty or has no data rows"); return; }
+        const headers = parseCSVLine(lines[0]);
+        const dataRows = lines.slice(1).map(parseCSVLine);
+        await processRows(headers, dataRows);
+      } else if (ext === "xlsx" || ext === "xls") {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        if (json.length < 2) { toast.error("File is empty or has no data rows"); return; }
+        const headers = json[0].map(String);
+        const dataRows = json.slice(1).map((row) => row.map(String));
+        await processRows(headers, dataRows);
+      } else {
+        toast.error("Unsupported file format. Please use .csv or .xlsx");
+      }
+    } catch (err) {
+      console.error("File upload error:", err);
+      toast.error("Failed to process file");
+    } finally {
+      setAdding(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const sendInvites = async () => {
@@ -289,9 +304,9 @@ export function SMSContactManager() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               className="hidden"
-              onChange={handleCSVUpload}
+              onChange={handleFileUpload}
             />
           </div>
 
