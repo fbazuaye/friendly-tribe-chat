@@ -304,9 +304,9 @@ export function SMSContactManager() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               className="hidden"
-              onChange={handleCSVUpload}
+              onChange={handleFileUpload}
             />
           </div>
 
