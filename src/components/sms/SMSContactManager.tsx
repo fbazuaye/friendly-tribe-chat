@@ -299,7 +299,7 @@ export function SMSContactManager() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
               <FileUp className="w-4 h-4 mr-1" />
-              Upload CSV
+              Upload File
             </Button>
             <input
               ref={fileInputRef}
