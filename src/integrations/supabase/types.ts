@@ -396,6 +396,7 @@ export type Database = {
           created_at: string
           id: string
           invite_code: string | null
+          member_count: number
           name: string
           updated_at: string
         }
@@ -403,6 +404,7 @@ export type Database = {
           created_at?: string
           id?: string
           invite_code?: string | null
+          member_count?: number
           name: string
           updated_at?: string
         }
@@ -410,6 +412,7 @@ export type Database = {
           created_at?: string
           id?: string
           invite_code?: string | null
+          member_count?: number
           name?: string
           updated_at?: string
         }
@@ -737,6 +740,32 @@ export type Database = {
       check_token_balance: {
         Args: { _org_id: string; _required: number; _user_id: string }
         Returns: boolean
+      }
+      get_org_users_paginated: {
+        Args: {
+          _org_id: string
+          _page_offset?: number
+          _page_size?: number
+          _search?: string
+        }
+        Returns: {
+          avatar_url: string
+          created_at: string
+          current_balance: number
+          display_name: string
+          id: string
+          last_seen_at: string
+          monthly_quota: number
+          phone: string
+          role: string
+        }[]
+      }
+      get_unread_community_counts: {
+        Args: { _user_id: string }
+        Returns: {
+          community_id: string
+          unread_count: number
+        }[]
       }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       get_user_role: {
