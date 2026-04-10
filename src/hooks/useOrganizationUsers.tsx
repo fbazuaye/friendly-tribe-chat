@@ -15,9 +15,17 @@ interface OrganizationUser {
   allocation_id: string | null;
 }
 
-export function useOrganizationUsers() {
+interface UseOrganizationUsersOptions {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+export function useOrganizationUsers(options: UseOrganizationUsersOptions = {}) {
+  const { page = 0, pageSize = 50, search = "" } = options;
   const { user } = useAuth();
   const [users, setUsers] = useState<OrganizationUser[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +37,7 @@ export function useOrganizationUsers() {
 
     try {
       setLoading(true);
-      
-      // Get the user's organization
+
       const { data: profile } = await supabase
         .from("profiles")
         .select("organization_id")
@@ -42,35 +49,61 @@ export function useOrganizationUsers() {
         return;
       }
 
-      // Fetch all users in the organization
-      const { data: profiles, error: profilesError } = await supabase
+      const orgId = profile.organization_id;
+
+      // Get total count
+      const { count } = await supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId);
+
+      setTotalCount(count || 0);
+
+      // Paginated profiles with optional search
+      let query = supabase
         .from("profiles")
         .select("id, display_name, avatar_url")
-        .eq("organization_id", profile.organization_id);
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
+      if (search) {
+        query = query.or(`display_name.ilike.%${search}%,phone.ilike.%${search}%`);
+      }
+
+      const { data: profiles, error: profilesError } = await query;
       if (profilesError) throw profilesError;
 
-      // Fetch roles for these users
-      const { data: roles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id, role")
-        .eq("organization_id", profile.organization_id);
+      const userIds = profiles?.map((p) => p.id) || [];
+      if (userIds.length === 0) {
+        setUsers([]);
+        setLoading(false);
+        return;
+      }
 
-      if (rolesError) throw rolesError;
+      // Fetch roles and allocations only for this page's users
+      const [rolesRes, allocationsRes] = await Promise.all([
+        supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .eq("organization_id", orgId)
+          .in("user_id", userIds),
+        supabase
+          .from("user_token_allocations")
+          .select("id, user_id, current_balance, monthly_quota")
+          .eq("organization_id", orgId)
+          .in("user_id", userIds),
+      ]);
 
-      // Fetch token allocations
-      const { data: allocations, error: allocationsError } = await supabase
-        .from("user_token_allocations")
-        .select("id, user_id, current_balance, monthly_quota")
-        .eq("organization_id", profile.organization_id);
+      if (rolesRes.error) throw rolesRes.error;
+      if (allocationsRes.error) throw allocationsRes.error;
 
-      if (allocationsError) throw allocationsError;
+      const roleMap = new Map(rolesRes.data?.map((r) => [r.user_id, r]) || []);
+      const allocMap = new Map(allocationsRes.data?.map((a) => [a.user_id, a]) || []);
 
-      // Combine the data
       const combinedUsers: OrganizationUser[] = (profiles || []).map((p) => {
-        const userRole = roles?.find((r) => r.user_id === p.id);
-        const allocation = allocations?.find((a) => a.user_id === p.id);
-
+        const userRole = roleMap.get(p.id);
+        const allocation = allocMap.get(p.id);
         return {
           id: p.id,
           display_name: p.display_name,
@@ -89,11 +122,18 @@ export function useOrganizationUsers() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, page, pageSize, search]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  return { users, loading, error, refetch: fetchUsers };
+  return {
+    users,
+    totalCount,
+    loading,
+    error,
+    refetch: fetchUsers,
+    hasMore: (page + 1) * pageSize < totalCount,
+  };
 }

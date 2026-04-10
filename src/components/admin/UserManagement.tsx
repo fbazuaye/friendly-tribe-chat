@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useCallback } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -30,19 +30,29 @@ const roleColors: Record<AppRole, string> = {
 };
 
 export function UserManagement() {
-  const { users, loading, refetch } = useOrganizationUsers();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
+
+  const { users, totalCount, loading, hasMore, refetch } = useOrganizationUsers({
+    page,
+    pageSize: PAGE_SIZE,
+    search: debouncedSearch,
+  });
   const { availableTokens } = useOrganizationWallet();
   const { toast } = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null);
   const [allocateAmount, setAllocateAmount] = useState("");
   const [isAllocating, setIsAllocating] = useState(false);
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.id.includes(searchQuery)
-  );
+  // Debounce search
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    setPage(0);
+    const timeout = setTimeout(() => setDebouncedSearch(value), 300);
+    return () => clearTimeout(timeout);
+  }, []);
 
   const handleAllocate = async () => {
     if (!selectedUser || !allocateAmount) return;
@@ -98,7 +108,7 @@ export function UserManagement() {
     }
   };
 
-  if (loading) {
+  if (loading && page === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -112,7 +122,7 @@ export function UserManagement() {
         <div>
           <h2 className="text-xl font-bold">User Management</h2>
           <p className="text-sm text-muted-foreground">
-            {users.length} members in organization
+            {totalCount.toLocaleString()} members in organization
           </p>
         </div>
       </div>
@@ -121,16 +131,16 @@ export function UserManagement() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
-          placeholder="Search users..."
+          placeholder="Search users by name or phone..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           className="pl-10"
         />
       </div>
 
       {/* Users list */}
       <div className="space-y-2">
-        {filteredUsers.map((user) => (
+        {users.map((user) => (
           <Card
             key={user.id}
             className="border-border/50 hover:bg-secondary/30 transition-colors cursor-pointer"
@@ -168,11 +178,36 @@ export function UserManagement() {
           </Card>
         ))}
 
-        {filteredUsers.length === 0 && (
+        {users.length === 0 && !loading && (
           <div className="text-center py-8 text-muted-foreground">
             No users found
           </div>
         )}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString()}
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!hasMore}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Next"}
+          </Button>
+        </div>
       </div>
 
       {/* Allocation dialog */}

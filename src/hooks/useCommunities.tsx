@@ -63,30 +63,39 @@ export function useCommunities() {
         memberships?.map((m) => [m.community_id, m]) || []
       );
 
-      // Get member counts - query all members for communities user is part of
+      // Get unread counts in a single query
+      const { data: unreadData } = await supabase.rpc("get_unread_community_counts", {
+        _user_id: user.id,
+      });
+      const unreadMap = new Map(
+        (unreadData || []).map((r: { community_id: string; unread_count: number }) => [
+          r.community_id,
+          r.unread_count,
+        ])
+      );
+
+      // Get member counts for joined communities in batch
       const joinedIds = memberships?.map((m) => m.community_id) || [];
+      const memberCountMap = new Map<string, number>();
+
+      if (joinedIds.length > 0) {
+        // Batch count: one query per community is unavoidable with count,
+        // but we can parallelize them
+        const countPromises = joinedIds.map(async (cid) => {
+          const { count } = await supabase
+            .from("community_members")
+            .select("id", { count: "exact", head: true })
+            .eq("community_id", cid);
+          return [cid, count || 0] as const;
+        });
+        const counts = await Promise.all(countPromises);
+        counts.forEach(([cid, cnt]) => memberCountMap.set(cid, cnt));
+      }
 
       const result: Community[] = [];
       for (const c of communities) {
         const membership = membershipMap.get(c.id);
-        if (!membership) continue; // Only show communities user is a member of
-
-        // Count members
-        const { count } = await supabase
-          .from("community_members")
-          .select("id", { count: "exact", head: true })
-          .eq("community_id", c.id);
-
-        // Count unread messages
-        let unread = 0;
-        if (membership.last_read_at) {
-          const { count: unreadCount } = await supabase
-            .from("community_messages")
-            .select("id", { count: "exact", head: true })
-            .eq("community_id", c.id)
-            .gt("created_at", membership.last_read_at);
-          unread = unreadCount || 0;
-        }
+        if (!membership) continue;
 
         result.push({
           id: c.id,
@@ -96,9 +105,9 @@ export function useCommunities() {
           organization_id: c.organization_id,
           created_by: c.created_by,
           created_at: c.created_at,
-          member_count: count || 0,
+          member_count: memberCountMap.get(c.id) || 0,
           is_admin: membership.role === "admin",
-          unread,
+          unread: unreadMap.get(c.id) || 0,
         });
       }
 

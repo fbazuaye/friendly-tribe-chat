@@ -11,26 +11,19 @@ export function useUnreadCommunityCount() {
     queryFn: async () => {
       if (!user?.id) return 0;
 
-      const { data: memberships } = await supabase
-        .from("community_members")
-        .select("community_id, last_read_at, joined_at")
-        .eq("user_id", user.id);
+      const { data, error } = await supabase.rpc("get_unread_community_counts", {
+        _user_id: user.id,
+      });
 
-      if (!memberships?.length) return 0;
-
-      let total = 0;
-      for (const mem of memberships) {
-        const cutoff = mem.last_read_at || mem.joined_at;
-        const { count } = await supabase
-          .from("community_messages")
-          .select("*", { count: "exact", head: true })
-          .eq("community_id", mem.community_id)
-          .neq("sender_id", user.id)
-          .gt("created_at", cutoff);
-        total += count || 0;
+      if (error) {
+        console.error("Error fetching unread community counts:", error);
+        return 0;
       }
 
-      return total;
+      return (data || []).reduce(
+        (sum: number, row: { unread_count: number }) => sum + (row.unread_count || 0),
+        0
+      );
     },
     enabled: !!user?.id,
     refetchInterval: 30000,
