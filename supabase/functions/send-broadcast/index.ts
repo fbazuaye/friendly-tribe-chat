@@ -6,9 +6,9 @@ const corsHeaders = {
 };
 
 const BROADCAST_TOKEN_COST = 1;
+const PUSH_BATCH_SIZE = 500;
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -26,20 +26,16 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Client with user's auth for validation
     const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Admin client for privileged operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify user
     const token = authHeader.replace("Bearer ", "");
     const { data: claims, error: claimsError } = await supabaseUser.auth.getClaims(token);
-    
+
     if (claimsError || !claims?.claims) {
-      console.error("Auth error:", claimsError);
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -47,9 +43,6 @@ Deno.serve(async (req) => {
     }
 
     const userId = claims.claims.sub as string;
-    console.log("User ID:", userId);
-
-    // Parse request body
     const { channel_id, content, message_type = "text" } = await req.json();
 
     if (!channel_id || !content) {
@@ -59,17 +52,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("Sending broadcast to channel:", channel_id);
-
     // Verify user owns this channel
     const { data: channel, error: channelError } = await supabaseAdmin
       .from("broadcast_channels")
-      .select("id, owner_id, organization_id")
+      .select("id, owner_id, organization_id, name")
       .eq("id", channel_id)
       .single();
 
     if (channelError || !channel) {
-      console.error("Channel error:", channelError);
       return new Response(
         JSON.stringify({ error: "Channel not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -83,7 +73,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check user's token balance
+    // Check token balance
     const { data: allocation, error: allocError } = await supabaseAdmin
       .from("user_token_allocations")
       .select("current_balance")
@@ -92,7 +82,6 @@ Deno.serve(async (req) => {
       .single();
 
     if (allocError || !allocation) {
-      console.error("Allocation error:", allocError);
       return new Response(
         JSON.stringify({ error: "Could not find token allocation" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -101,9 +90,7 @@ Deno.serve(async (req) => {
 
     if (allocation.current_balance < BROADCAST_TOKEN_COST) {
       return new Response(
-        JSON.stringify({ 
-          error: `Insufficient tokens. Need ${BROADCAST_TOKEN_COST}, have ${allocation.current_balance}` 
-        }),
+        JSON.stringify({ error: `Insufficient tokens. Need ${BROADCAST_TOKEN_COST}, have ${allocation.current_balance}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -117,14 +104,13 @@ Deno.serve(async (req) => {
       .eq("organization_id", channel.organization_id);
 
     if (updateError) {
-      console.error("Token update error:", updateError);
       return new Response(
         JSON.stringify({ error: "Failed to consume tokens" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Log the transaction
+    // Log transaction
     await supabaseAdmin.from("token_transactions").insert({
       user_id: userId,
       organization_id: channel.organization_id,
@@ -149,25 +135,80 @@ Deno.serve(async (req) => {
       .single();
 
     if (messageError) {
-      console.error("Message insert error:", messageError);
       return new Response(
         JSON.stringify({ error: "Failed to send broadcast message" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // Batched push notification fan-out (non-blocking)
+    try {
+      let offset = 0;
+      let hasMoreSubscribers = true;
+
+      while (hasMoreSubscribers) {
+        // Get subscriber user IDs in batches
+        const { data: subscribers } = await supabaseAdmin
+          .from("broadcast_subscribers")
+          .select("user_id")
+          .eq("channel_id", channel_id)
+          .neq("user_id", userId)
+          .range(offset, offset + PUSH_BATCH_SIZE - 1);
+
+        if (!subscribers || subscribers.length === 0) {
+          hasMoreSubscribers = false;
+          break;
+        }
+
+        const subscriberUserIds = subscribers.map((s) => s.user_id);
+
+        // Get push subscriptions for this batch
+        const { data: pushSubs } = await supabaseAdmin
+          .from("push_subscriptions")
+          .select("user_id, endpoint, p256dh, auth")
+          .in("user_id", subscriberUserIds);
+
+        if (pushSubs && pushSubs.length > 0) {
+          // Send push notifications via the existing edge function
+          try {
+            await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                subscriptions: pushSubs,
+                title: `📢 ${channel.name}`,
+                body: content.substring(0, 200),
+                data: { type: "broadcast", channel_id },
+              }),
+            });
+          } catch (pushErr) {
+            console.error("Push notification batch error:", pushErr);
+          }
+        }
+
+        offset += PUSH_BATCH_SIZE;
+        if (subscribers.length < PUSH_BATCH_SIZE) {
+          hasMoreSubscribers = false;
+        }
+      }
+    } catch (fanoutErr) {
+      console.error("Push fan-out error (non-blocking):", fanoutErr);
+    }
+
     console.log("Broadcast sent successfully:", message.id);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         message_id: message.id,
         tokens_consumed: BROADCAST_TOKEN_COST,
         new_balance: newBalance,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
   } catch (error) {
     console.error("Unexpected error:", error);
     return new Response(
