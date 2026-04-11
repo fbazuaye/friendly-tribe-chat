@@ -3,12 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Coins, Users, History, Loader2, ShieldAlert, Settings, MessageSquare } from "lucide-react";
+import { ArrowLeft, Coins, Users, History, Loader2, ShieldAlert, Settings, MessageSquare, Radio } from "lucide-react";
 import { WalletOverview } from "@/components/admin/WalletOverview";
 import { UserManagement } from "@/components/admin/UserManagement";
 import { TransactionHistory } from "@/components/admin/TransactionHistory";
 import { PurchaseTokensDialog } from "@/components/admin/PurchaseTokensDialog";
 import { InviteCodeManager } from "@/components/admin/InviteCodeManager";
+import { BroadcastAnalytics } from "@/components/admin/BroadcastAnalytics";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -87,7 +88,7 @@ export default function AdminDashboard() {
       {/* Main content */}
       <div className="p-4 pb-24">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full bg-secondary/50 ${isSuperAdmin ? 'grid-cols-4' : 'grid-cols-3'}`}>
+          <TabsList className={`grid w-full bg-secondary/50 ${isSuperAdmin ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <TabsTrigger value="overview" className="gap-2">
               <Coins className="w-4 h-4" />
               <span className="hidden sm:inline">Wallet</span>
@@ -95,6 +96,10 @@ export default function AdminDashboard() {
             <TabsTrigger value="users" className="gap-2">
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Users</span>
+            </TabsTrigger>
+            <TabsTrigger value="broadcasts" className="gap-2">
+              <Radio className="w-4 h-4" />
+              <span className="hidden sm:inline">Broadcasts</span>
             </TabsTrigger>
             <TabsTrigger value="history" className="gap-2">
               <History className="w-4 h-4" />
@@ -114,6 +119,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="users" className="mt-6">
             <UserManagement />
+          </TabsContent>
+
+          <TabsContent value="broadcasts" className="mt-6">
+            <BroadcastAnalytics />
           </TabsContent>
 
           <TabsContent value="history" className="mt-6">

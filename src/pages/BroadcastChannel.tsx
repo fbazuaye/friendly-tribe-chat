@@ -52,6 +52,35 @@ export default function BroadcastChannel() {
     }
   }, [id]);
 
+  // Realtime subscription for new broadcast messages
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`broadcast-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "broadcast_messages",
+          filter: `channel_id=eq.${id}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as BroadcastMessage;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
