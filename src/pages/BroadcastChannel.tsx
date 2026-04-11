@@ -95,12 +95,6 @@ export default function BroadcastChannel() {
         return;
       }
 
-      // Get subscriber count
-      const { count } = await supabase
-        .from("broadcast_subscribers")
-        .select("*", { count: "exact", head: true })
-        .eq("channel_id", id);
-
       // Check if user is subscribed
       const { data: subscription } = await supabase
         .from("broadcast_subscribers")
@@ -111,7 +105,7 @@ export default function BroadcastChannel() {
 
       setChannel({
         ...channelData,
-        subscriber_count: count || 0,
+        subscriber_count: (channelData as any).subscriber_count ?? 0,
         is_subscribed: !!subscription,
       });
     } catch (error) {
@@ -126,6 +120,10 @@ export default function BroadcastChannel() {
     }
   };
 
+  const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+  const MESSAGES_PAGE_SIZE = 50;
+
   const loadMessages = async () => {
     if (!id) return;
 
@@ -134,12 +132,40 @@ export default function BroadcastChannel() {
         .from("broadcast_messages")
         .select("*")
         .eq("channel_id", id)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .range(0, MESSAGES_PAGE_SIZE - 1);
 
       if (error) throw error;
-      setMessages(data || []);
+      const msgs = (data || []).reverse();
+      setMessages(msgs);
+      setHasEarlierMessages((data?.length || 0) >= MESSAGES_PAGE_SIZE);
     } catch (error) {
       console.error("Error loading messages:", error);
+    }
+  };
+
+  const loadEarlierMessages = async () => {
+    if (!id || isLoadingEarlier || messages.length === 0) return;
+    setIsLoadingEarlier(true);
+
+    try {
+      const oldestMessage = messages[0];
+      const { data, error } = await supabase
+        .from("broadcast_messages")
+        .select("*")
+        .eq("channel_id", id)
+        .lt("created_at", oldestMessage.created_at)
+        .order("created_at", { ascending: false })
+        .range(0, MESSAGES_PAGE_SIZE - 1);
+
+      if (error) throw error;
+      const older = (data || []).reverse();
+      setMessages((prev) => [...older, ...prev]);
+      setHasEarlierMessages((data?.length || 0) >= MESSAGES_PAGE_SIZE);
+    } catch (error) {
+      console.error("Error loading earlier messages:", error);
+    } finally {
+      setIsLoadingEarlier(false);
     }
   };
 
@@ -277,6 +303,21 @@ export default function BroadcastChannel() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {hasEarlierMessages && (
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadEarlierMessages}
+              disabled={isLoadingEarlier}
+            >
+              {isLoadingEarlier ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              Load earlier messages
+            </Button>
+          </div>
+        )}
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">

@@ -59,22 +59,13 @@ export default function DiscoverChannels() {
         (channel) => channel.owner_id !== user.id && !subscribedIds.has(channel.id)
       );
 
-      // Fetch subscriber counts
-      const enrichedChannels = await Promise.all(
-        discoverableChannels.map(async (channel) => {
-          const { count } = await supabase
-            .from("broadcast_subscribers")
-            .select("*", { count: "exact", head: true })
-            .eq("channel_id", channel.id);
-
-          return {
-            ...channel,
-            subscriber_count: count || 0,
-          };
-        })
+      // subscriber_count already comes from the channel row
+      setChannels(
+        discoverableChannels.map((channel) => ({
+          ...channel,
+          subscriber_count: (channel as any).subscriber_count ?? 0,
+        }))
       );
-
-      setChannels(enrichedChannels);
     } catch (error) {
       console.error("Error loading discoverable channels:", error);
       toast({

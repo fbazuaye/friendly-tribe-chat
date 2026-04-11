@@ -77,14 +77,9 @@ export default function Broadcasts() {
 
       if (channelsError) throw channelsError;
 
-      // Fetch subscriber counts and last messages
+      // Fetch last messages per channel (subscriber_count comes from the channel row)
       const enrichedChannels = await Promise.all(
         (channels || []).map(async (channel) => {
-          const { count } = await supabase
-            .from("broadcast_subscribers")
-            .select("*", { count: "exact", head: true })
-            .eq("channel_id", channel.id);
-
           const { data: lastMsg } = await supabase
             .from("broadcast_messages")
             .select("content, created_at")
@@ -95,7 +90,7 @@ export default function Broadcasts() {
 
           return {
             ...channel,
-            subscriber_count: count || 0,
+            subscriber_count: (channel as any).subscriber_count ?? 0,
             last_message: lastMsg || undefined,
           };
         })
