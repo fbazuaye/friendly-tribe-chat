@@ -141,66 +141,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Batched push notification fan-out (non-blocking)
-    try {
-      let offset = 0;
-      let hasMoreSubscribers = true;
-
-      while (hasMoreSubscribers) {
-        // Get subscriber user IDs in batches
-        const { data: subscribers } = await supabaseAdmin
-          .from("broadcast_subscribers")
-          .select("user_id")
-          .eq("channel_id", channel_id)
-          .neq("user_id", userId)
-          .range(offset, offset + PUSH_BATCH_SIZE - 1);
-
-        if (!subscribers || subscribers.length === 0) {
-          hasMoreSubscribers = false;
-          break;
-        }
-
-        const subscriberUserIds = subscribers.map((s) => s.user_id);
-
-        // Get push subscriptions for this batch
-        const { data: pushSubs } = await supabaseAdmin
-          .from("push_subscriptions")
-          .select("user_id, endpoint, p256dh, auth")
-          .in("user_id", subscriberUserIds);
-
-        if (pushSubs && pushSubs.length > 0) {
-          // Send push notifications via the existing edge function
-          try {
-            await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${supabaseServiceKey}`,
-              },
-              body: JSON.stringify({
-                subscriptions: pushSubs,
-                title: `📢 ${channel.name}`,
-                body: content.substring(0, 200),
-                data: { type: "broadcast", channel_id },
-              }),
-            });
-          } catch (pushErr) {
-            console.error("Push notification batch error:", pushErr);
-          }
-        }
-
-        offset += PUSH_BATCH_SIZE;
-        if (subscribers.length < PUSH_BATCH_SIZE) {
-          hasMoreSubscribers = false;
-        }
-      }
-    } catch (fanoutErr) {
-      console.error("Push fan-out error (non-blocking):", fanoutErr);
-    }
-
     console.log("Broadcast sent successfully:", message.id);
 
-    return new Response(
+    // Return response immediately — push fan-out happens in background
+    const response = new Response(
       JSON.stringify({
         success: true,
         message_id: message.id,
@@ -209,6 +153,74 @@ Deno.serve(async (req) => {
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
+    // Async push notification fan-out (runs after response is sent)
+    const pushFanout = async () => {
+      try {
+        let offset = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+          const { data: subscribers } = await supabaseAdmin
+            .from("broadcast_subscribers")
+            .select("user_id")
+            .eq("channel_id", channel_id)
+            .neq("user_id", userId)
+            .range(offset, offset + PUSH_BATCH_SIZE - 1);
+
+          if (!subscribers || subscribers.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          const subscriberUserIds = subscribers.map((s) => s.user_id);
+
+          const { data: pushSubs } = await supabaseAdmin
+            .from("push_subscriptions")
+            .select("user_id, endpoint, p256dh, auth")
+            .in("user_id", subscriberUserIds);
+
+          if (pushSubs && pushSubs.length > 0) {
+            try {
+              await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  subscriptions: pushSubs,
+                  title: `📢 ${channel.name}`,
+                  body: content.substring(0, 200),
+                  data: { type: "broadcast", channel_id },
+                }),
+              });
+            } catch (pushErr) {
+              console.error("Push notification batch error:", pushErr);
+            }
+          }
+
+          offset += PUSH_BATCH_SIZE;
+          if (subscribers.length < PUSH_BATCH_SIZE) {
+            hasMore = false;
+          }
+        }
+
+        console.log(`Push fan-out complete for broadcast ${message.id}, processed ${offset} subscribers`);
+      } catch (fanoutErr) {
+        console.error("Push fan-out error:", fanoutErr);
+      }
+    };
+
+    // Use EdgeRuntime.waitUntil if available, otherwise setTimeout
+    if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
+      (globalThis as any).EdgeRuntime.waitUntil(pushFanout());
+    } else {
+      // Fallback: fire-and-forget — Deno will keep the isolate alive for pending promises
+      pushFanout();
+    }
+
+    return response;
   } catch (error) {
     console.error("Unexpected error:", error);
     return new Response(
