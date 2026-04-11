@@ -1,30 +1,29 @@
 
 
-# Generate Pulse Community Feature Guide (Word Document)
+# Generate Pulse vs WhatsApp Political Campaign Pitch Document
 
 ## What we'll create
-A downloadable Word document (.docx) that serves as a comprehensive guide explaining how the Pulse Community feature works, covering: onboarding flow, joining communities, messaging, admin capabilities, member limits, and broadcast channels.
+A professional, pitch-ready Word document comparing Pulse to WhatsApp for political campaigns, with heavy emphasis on WhatsApp's explicit ban on political use as the headline differentiator.
 
-## Content outline
-1. **Getting Started** — Install Pulse, sign up, enter invite code (LIVEGIG2026), join the organization
-2. **Communities Overview** — What communities are, how they differ from broadcasts
-3. **Joining a Community** — Members are added by the community creator; communities appear on the Communities tab
-4. **Creating a Community (Admin/Any Member)** — Name, description, avatar, select members
-5. **Messaging in Communities** — Real-time group chat, text messages, date grouping, unread badges
-6. **Member Management** — View members, leave community, admin roles
-7. **Member Limits** — Current technical limits (recommended 200 per community, 500 per org), scalability optimizations in place
-8. **Broadcast Channels** — One-to-many messaging for large audiences, admin-only creation, subscriber model
-9. **FAQ / Tips**
+## Document structure
+1. **Cover page** — "Why Pulse Community is the Smart Choice for Political Campaigns"
+2. **The WhatsApp Problem** — Direct quotes from WhatsApp's official policy banning political parties, politicians, candidates, and campaigns from their Business Platform. Risk of account termination.
+3. **Feature Comparison Table** — Side-by-side: Pulse vs WhatsApp across 12+ dimensions (political use allowed, broadcast messaging, bulk SMS, AI assistant, member limits, data ownership, admin controls, analytics, branding, scalability, cost control, multi-channel reach)
+4. **Key Benefits for Politicians** — 8 bullet points: no platform risk, multi-channel outreach (app + SMS), AI-powered message drafting, unlimited broadcasts, full data ownership, invite-only security, admin dashboard, token-based cost control
+5. **Use Cases** — Rally coordination, voter outreach via SMS to non-app users, regional volunteer communities, fundraising broadcasts, polling/feedback
+6. **Privacy & Compliance** — Invite-only org, role-based access, no Meta/third-party data sharing, campaign owns all data
+7. **Risk Comparison** — What happens when WhatsApp bans your campaign account vs Pulse (you control everything)
+8. **Call to Action** — Next steps to deploy Pulse for your campaign
 
 ## Technical approach
-- Use the `docx` npm package (already available) to generate a professional .docx file
-- Write the generation script to `/tmp/gen_guide.js`, output to `/mnt/documents/Pulse_Community_Guide.docx`
-- Apply branded styling with Pulse colors, proper headings, numbered lists, and table formatting
-- QA by converting to images and inspecting
+- Generate using `docx` npm package with professional styling, branded colors, comparison tables
+- Include the direct WhatsApp policy quote as a highlighted callout
+- Output to `/mnt/documents/Pulse_vs_WhatsApp_Political_Pitch.docx`
+- QA via PDF/image conversion of all pages
 
 ## Steps
-1. Write the Node.js script using `docx` package to generate the document
-2. Run the script to produce the .docx file
-3. Convert to PDF/images for visual QA
-4. Deliver the artifact to the user
+1. Write the Node.js generation script
+2. Run it to produce the .docx
+3. Visual QA all pages
+4. Deliver artifact
 
