@@ -744,6 +744,13 @@ export type Database = {
         Args: { _org_id: string; _required: number; _user_id: string }
         Returns: boolean
       }
+      get_broadcast_audience_stats: {
+        Args: { _channel_id: string }
+        Returns: {
+          audience_size: number
+          push_ready: number
+        }[]
+      }
       get_org_users_paginated: {
         Args: {
           _org_id: string

@@ -1,81 +1,71 @@
+## Goal
 
+Show channel owners an audience preview before sending a broadcast — how many subscribers will receive it, how many have push notifications enabled (instant delivery), and an estimated time for the push fan-out to complete.
 
-# Scale Broadcast System to 12 Million Subscribers
+## Where it goes
 
-## Problems to fix
+In `src/pages/BroadcastChannel.tsx`, replace the small "1 token per broadcast" pill above the composer (visible only to the owner) with a richer preview row:
 
-1. **Push notification fan-out blocks the response** — The `send-broadcast` edge function loops through all subscribers synchronously before returning. At 12M subscribers, this will timeout (60s limit).
-2. **`SELECT COUNT(*)` on subscribers** — `BroadcastChannel.tsx`, `Broadcasts.tsx`, and `DiscoverChannels.tsx` all run `count: 'exact'` queries per channel against `broadcast_subscribers`. At 12M rows, this is extremely slow.
-3. **Messages load all at once** — `loadMessages()` in `BroadcastChannel.tsx` fetches every message with no limit or pagination.
-
-## Plan
-
-### Step 1: Database migration
-- Add `subscriber_count` column (default 0) to `broadcast_channels`
-- Create trigger function `update_broadcast_subscriber_count()` that increments/decrements on INSERT/DELETE to `broadcast_subscribers`
-- Backfill existing counts with an UPDATE
-- Add index on `broadcast_messages(channel_id, created_at DESC)` for paginated message queries
-
-### Step 2: Async push notification fan-out in `send-broadcast`
-- After inserting the broadcast message, return the response immediately to the caller
-- Fire push notifications asynchronously using `EdgeRuntime.waitUntil()` (Deno equivalent: the function continues processing after the response is sent)
-- Inside the async block, process subscribers in batches of 500, calling `send-push-notification` for each batch
-- This prevents the 60s timeout from killing the broadcast
-
-### Step 3: Update `BroadcastChannel.tsx`
-- Use `subscriber_count` from `broadcast_channels` table instead of counting subscribers
-- Paginate messages: load latest 50 messages, add "Load earlier" button with cursor-based pagination using `created_at`
-
-### Step 4: Update `Broadcasts.tsx`
-- Use `subscriber_count` from `broadcast_channels` directly (already fetched in the channel query) instead of per-channel count queries
-
-### Step 5: Update `DiscoverChannels.tsx`
-- Same fix: use `subscriber_count` from `broadcast_channels` instead of per-channel count queries
-
----
-
-### Technical details
-
-**Migration SQL:**
-```sql
-ALTER TABLE public.broadcast_channels
-  ADD COLUMN subscriber_count integer NOT NULL DEFAULT 0;
-
-CREATE INDEX idx_broadcast_messages_channel_created
-  ON public.broadcast_messages(channel_id, created_at DESC);
-
--- Trigger function
-CREATE OR REPLACE FUNCTION update_broadcast_subscriber_count()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
-SET search_path TO 'public' AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    UPDATE broadcast_channels SET subscriber_count = subscriber_count + 1
-    WHERE id = NEW.channel_id;
-  ELSIF TG_OP = 'DELETE' THEN
-    UPDATE broadcast_channels SET subscriber_count = subscriber_count - 1
-    WHERE id = OLD.channel_id;
-  END IF;
-  RETURN COALESCE(NEW, OLD);
-END;
-$$;
-
-CREATE TRIGGER trg_broadcast_subscriber_count
-AFTER INSERT OR DELETE ON public.broadcast_subscribers
-FOR EACH ROW EXECUTE FUNCTION update_broadcast_subscriber_count();
-
--- Backfill
-UPDATE broadcast_channels bc SET subscriber_count = (
-  SELECT COUNT(*) FROM broadcast_subscribers bs WHERE bs.channel_id = bc.id
-);
+```text
+[👥 1,240 subscribers] [⚡ 980 push-ready] [⏱ ~3s delivery] [● 1 token]
 ```
 
-**Edge function change (`send-broadcast`):**
-- Move the entire push fan-out `while` loop into a detached async block using `setTimeout(() => { ... }, 0)` pattern (Deno edge functions continue executing background work after returning a response)
-- The broadcast message insert + token deduction remain synchronous
+Tap/long-press shows a tooltip explaining what each number means.
 
-**Frontend changes:**
-- `BroadcastChannel.tsx`: select `subscriber_count` from channel, paginate messages with `.range(0, 49)` and a "Load earlier" button
-- `Broadcasts.tsx`: remove per-channel count queries, use `subscriber_count` from channel select
-- `DiscoverChannels.tsx`: same removal of per-channel count queries
+## What it shows
 
+1. **Audience size** — total subscribers (excluding the owner). Already in `channel.subscriber_count`; we'll subtract 1 if the owner is also a subscriber.
+2. **Push-ready count** — subscribers with at least one row in `push_subscriptions`. Users without push only see the message when they next open the app.
+3. **Estimated delivery time** — based on the edge function's batching (`PUSH_BATCH_SIZE = 500`, ~1s per batch round-trip):
+   - `< 500 push-ready` → "instant" (~1–2s)
+   - `500–5,000` → `~Ns` where N = ceil(pushReady / 500)
+   - `> 5,000` → show in minutes: `~Nm` where N = ceil(pushReady / 30000)
+4. **Token cost** — keep the existing "1 token" indicator.
+
+## Data fetching
+
+Add a new function `loadAudiencePreview()` in `BroadcastChannel.tsx`, called once when the owner loads the channel and re-run after each successful send (counts can drift as people subscribe/unsubscribe):
+
+- Query 1: `broadcast_subscribers` count where `channel_id = id` and `user_id != owner_id` → audience size.
+- Query 2: distinct `user_id` from `push_subscriptions` joined against the subscriber list. Since cross-table joins via PostgREST are awkward here, use a small RPC.
+
+### New RPC: `get_broadcast_audience_stats(_channel_id uuid)`
+
+```sql
+create or replace function public.get_broadcast_audience_stats(_channel_id uuid)
+returns table(audience_size bigint, push_ready bigint)
+language sql stable security definer set search_path = public
+as $$
+  with subs as (
+    select bs.user_id
+    from public.broadcast_subscribers bs
+    join public.broadcast_channels bc on bc.id = bs.channel_id
+    where bs.channel_id = _channel_id
+      and bs.user_id <> bc.owner_id
+  )
+  select
+    (select count(*) from subs) as audience_size,
+    (select count(distinct ps.user_id)
+       from public.push_subscriptions ps
+       where ps.user_id in (select user_id from subs)) as push_ready;
+$$;
+```
+
+Only channel owners need this — RLS isn't an issue because the function is `security definer` and the UI gates the call behind `isOwner`. We could add an `is_channel_owner` guard inside the function but it's strictly informational, so a simple definer is fine.
+
+## UI details
+
+- Render a horizontal row of small pills (matching existing glass styling) above the input. On narrow viewports (< 400px) it wraps to two lines.
+- While loading, show skeleton chips so layout doesn't jump.
+- Numbers > 999 use compact format (`1.2K`, `12K`).
+- After a successful send, refresh the preview (subscriber/push counts may have changed, and the user just saw "delivered to N subscribers").
+
+## Files
+
+- **New migration** — add `get_broadcast_audience_stats` function.
+- **Edit** `src/pages/BroadcastChannel.tsx` — add audience-preview state, fetch on mount + after send, render pill row in composer area (owner-only).
+
+## Out of scope
+
+- Real-time updates of the preview as people subscribe (refetch on send is enough; the 30s `useUnreadBroadcastCount` pattern is overkill here).
+- Per-user delivery receipts (would need a deliveries table — separate feature).
