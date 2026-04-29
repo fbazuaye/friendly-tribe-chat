@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Radio, Users, Send, Loader2, Crown, LogOut } from "lucide-react";
+import { ArrowLeft, Radio, Users, Send, Loader2, Crown, LogOut, Zap, Clock, Coins } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,8 +42,44 @@ export default function BroadcastChannel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLeaving, setIsLeaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [audienceStats, setAudienceStats] = useState<{ audience: number; pushReady: number } | null>(null);
+  const [isLoadingAudience, setIsLoadingAudience] = useState(false);
 
   const isOwner = user?.id === channel?.owner_id;
+
+  const formatCompact = (n: number) => {
+    if (n < 1000) return n.toLocaleString();
+    if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, "")}K`;
+    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  };
+
+  const estimateDelivery = (pushReady: number) => {
+    if (pushReady === 0) return "—";
+    if (pushReady < 500) return "~instant";
+    if (pushReady <= 5000) return `~${Math.ceil(pushReady / 500)}s`;
+    return `~${Math.ceil(pushReady / 30000)}m`;
+  };
+
+  const loadAudienceStats = async (channelId: string) => {
+    setIsLoadingAudience(true);
+    try {
+      const { data, error } = await supabase.rpc("get_broadcast_audience_stats", {
+        _channel_id: channelId,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) {
+        setAudienceStats({
+          audience: Number((row as any).audience_size ?? 0),
+          pushReady: Number((row as any).push_ready ?? 0),
+        });
+      }
+    } catch (err) {
+      console.error("Error loading audience stats:", err);
+    } finally {
+      setIsLoadingAudience(false);
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -84,6 +120,13 @@ export default function BroadcastChannel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Load audience preview when the owner opens the channel
+  useEffect(() => {
+    if (channel && user?.id && channel.owner_id === user.id) {
+      loadAudienceStats(channel.id);
+    }
+  }, [channel?.id, channel?.owner_id, user?.id]);
 
   // Mark broadcast as read when viewing
   useEffect(() => {
@@ -220,10 +263,11 @@ export default function BroadcastChannel() {
 
       setNewMessage("");
       loadMessages(); // Reload messages
+      if (id) loadAudienceStats(id);
 
       toast({
         title: "Broadcast sent!",
-        description: `Message delivered to ${channel?.subscriber_count || 0} subscribers`,
+        description: `Message delivered to ${audienceStats?.audience ?? channel?.subscriber_count ?? 0} subscribers`,
       });
     } catch (error: any) {
       console.error("Error sending broadcast:", error);
@@ -381,10 +425,49 @@ export default function BroadcastChannel() {
       {/* Composer (only for owner) */}
       {isOwner && (
         <div className="sticky bottom-0 border-t border-border/50 bg-background p-3">
-          <div className="flex items-center gap-2 p-3 bg-secondary/50 rounded-xl">
-            <p className="text-xs text-muted-foreground">
-              <span className="text-primary font-medium">1 token</span> per broadcast
-            </p>
+          <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2" title="Audience preview for your next broadcast">
+            {isLoadingAudience && !audienceStats ? (
+              <>
+                <div className="h-6 w-24 rounded-full bg-secondary/60 animate-pulse" />
+                <div className="h-6 w-24 rounded-full bg-secondary/60 animate-pulse" />
+                <div className="h-6 w-20 rounded-full bg-secondary/60 animate-pulse" />
+                <div className="h-6 w-16 rounded-full bg-secondary/60 animate-pulse" />
+              </>
+            ) : (
+              <>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary/60 text-xs text-foreground"
+                  title="People who will receive this broadcast"
+                >
+                  <Users className="w-3 h-3 text-muted-foreground" />
+                  <span className="font-medium">{formatCompact(audienceStats?.audience ?? 0)}</span>
+                  <span className="text-muted-foreground">subscribers</span>
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary/60 text-xs text-foreground"
+                  title="Subscribers with push notifications enabled — they get an instant alert"
+                >
+                  <Zap className="w-3 h-3 text-primary" />
+                  <span className="font-medium">{formatCompact(audienceStats?.pushReady ?? 0)}</span>
+                  <span className="text-muted-foreground">push-ready</span>
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary/60 text-xs text-foreground"
+                  title="Estimated time to deliver push notifications to all push-ready subscribers"
+                >
+                  <Clock className="w-3 h-3 text-muted-foreground" />
+                  <span className="font-medium">{estimateDelivery(audienceStats?.pushReady ?? 0)}</span>
+                  <span className="text-muted-foreground">delivery</span>
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-xs text-primary"
+                  title="Token cost per broadcast, regardless of audience size"
+                >
+                  <Coins className="w-3 h-3" />
+                  <span className="font-medium">1 token</span>
+                </span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-2">
             <Input
