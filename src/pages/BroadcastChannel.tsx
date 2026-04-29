@@ -263,10 +263,11 @@ export default function BroadcastChannel() {
 
       setNewMessage("");
       loadMessages(); // Reload messages
+      if (id) loadAudienceStats(id);
 
       toast({
         title: "Broadcast sent!",
-        description: `Message delivered to ${channel?.subscriber_count || 0} subscribers`,
+        description: `Message delivered to ${audienceStats?.audience ?? channel?.subscriber_count ?? 0} subscribers`,
       });
     } catch (error: any) {
       console.error("Error sending broadcast:", error);
