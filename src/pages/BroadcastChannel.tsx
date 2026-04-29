@@ -42,8 +42,44 @@ export default function BroadcastChannel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLeaving, setIsLeaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [audienceStats, setAudienceStats] = useState<{ audience: number; pushReady: number } | null>(null);
+  const [isLoadingAudience, setIsLoadingAudience] = useState(false);
 
   const isOwner = user?.id === channel?.owner_id;
+
+  const formatCompact = (n: number) => {
+    if (n < 1000) return n.toLocaleString();
+    if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, "")}K`;
+    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  };
+
+  const estimateDelivery = (pushReady: number) => {
+    if (pushReady === 0) return "—";
+    if (pushReady < 500) return "~instant";
+    if (pushReady <= 5000) return `~${Math.ceil(pushReady / 500)}s`;
+    return `~${Math.ceil(pushReady / 30000)}m`;
+  };
+
+  const loadAudienceStats = async (channelId: string) => {
+    setIsLoadingAudience(true);
+    try {
+      const { data, error } = await supabase.rpc("get_broadcast_audience_stats", {
+        _channel_id: channelId,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) {
+        setAudienceStats({
+          audience: Number((row as any).audience_size ?? 0),
+          pushReady: Number((row as any).push_ready ?? 0),
+        });
+      }
+    } catch (err) {
+      console.error("Error loading audience stats:", err);
+    } finally {
+      setIsLoadingAudience(false);
+    }
+  };
 
   useEffect(() => {
     if (id) {
