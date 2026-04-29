@@ -425,10 +425,49 @@ export default function BroadcastChannel() {
       {/* Composer (only for owner) */}
       {isOwner && (
         <div className="sticky bottom-0 border-t border-border/50 bg-background p-3">
-          <div className="flex items-center gap-2 p-3 bg-secondary/50 rounded-xl">
-            <p className="text-xs text-muted-foreground">
-              <span className="text-primary font-medium">1 token</span> per broadcast
-            </p>
+          <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2" title="Audience preview for your next broadcast">
+            {isLoadingAudience && !audienceStats ? (
+              <>
+                <div className="h-6 w-24 rounded-full bg-secondary/60 animate-pulse" />
+                <div className="h-6 w-24 rounded-full bg-secondary/60 animate-pulse" />
+                <div className="h-6 w-20 rounded-full bg-secondary/60 animate-pulse" />
+                <div className="h-6 w-16 rounded-full bg-secondary/60 animate-pulse" />
+              </>
+            ) : (
+              <>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary/60 text-xs text-foreground"
+                  title="People who will receive this broadcast"
+                >
+                  <Users className="w-3 h-3 text-muted-foreground" />
+                  <span className="font-medium">{formatCompact(audienceStats?.audience ?? 0)}</span>
+                  <span className="text-muted-foreground">subscribers</span>
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary/60 text-xs text-foreground"
+                  title="Subscribers with push notifications enabled — they get an instant alert"
+                >
+                  <Zap className="w-3 h-3 text-primary" />
+                  <span className="font-medium">{formatCompact(audienceStats?.pushReady ?? 0)}</span>
+                  <span className="text-muted-foreground">push-ready</span>
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary/60 text-xs text-foreground"
+                  title="Estimated time to deliver push notifications to all push-ready subscribers"
+                >
+                  <Clock className="w-3 h-3 text-muted-foreground" />
+                  <span className="font-medium">{estimateDelivery(audienceStats?.pushReady ?? 0)}</span>
+                  <span className="text-muted-foreground">delivery</span>
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-xs text-primary"
+                  title="Token cost per broadcast, regardless of audience size"
+                >
+                  <Coins className="w-3 h-3" />
+                  <span className="font-medium">1 token</span>
+                </span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-2">
             <Input
