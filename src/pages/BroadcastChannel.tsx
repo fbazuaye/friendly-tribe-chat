@@ -121,6 +121,13 @@ export default function BroadcastChannel() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Load audience preview when the owner opens the channel
+  useEffect(() => {
+    if (channel && user?.id && channel.owner_id === user.id) {
+      loadAudienceStats(channel.id);
+    }
+  }, [channel?.id, channel?.owner_id, user?.id]);
+
   // Mark broadcast as read when viewing
   useEffect(() => {
     if (!id || !user?.id) return;
