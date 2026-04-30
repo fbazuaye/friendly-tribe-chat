@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import {
   Dialog,
@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Printer, QrCode } from "lucide-react";
+import { Download, Loader2, Printer, QrCode } from "lucide-react";
 
 interface QRCodeDialogProps {
   open: boolean;
@@ -23,7 +23,6 @@ export function QRCodeDialog({
   inviteCode,
   organizationName,
 }: QRCodeDialogProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dataUrl, setDataUrl] = useState<string>("");
 
   const joinUrl = `${window.location.origin}/join-organization?code=${encodeURIComponent(
@@ -31,14 +30,8 @@ export function QRCodeDialog({
   )}`;
 
   useEffect(() => {
-    if (!open || !canvasRef.current) return;
-
-    QRCode.toCanvas(canvasRef.current, joinUrl, {
-      width: 512,
-      margin: 2,
-      errorCorrectionLevel: "H",
-      color: { dark: "#0B1F3A", light: "#FFFFFF" },
-    }).catch((err) => console.error("QR generation failed", err));
+    if (!open) return;
+    setDataUrl("");
 
     QRCode.toDataURL(joinUrl, {
       width: 1024,
@@ -47,7 +40,7 @@ export function QRCodeDialog({
       color: { dark: "#0B1F3A", light: "#FFFFFF" },
     })
       .then(setDataUrl)
-      .catch((err) => console.error("QR data url failed", err));
+      .catch((err) => console.error("QR generation failed", err));
   }, [open, joinUrl]);
 
   const handleDownload = () => {
