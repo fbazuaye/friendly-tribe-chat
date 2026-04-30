@@ -107,8 +107,12 @@ export function QRCodeDialog({
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-4 py-4">
-          <div className="bg-white p-4 rounded-2xl shadow-sm">
-            <canvas ref={canvasRef} className="w-64 h-64" />
+          <div className="bg-white p-4 rounded-2xl shadow-sm w-72 h-72 flex items-center justify-center">
+            {dataUrl ? (
+              <img src={dataUrl} alt="Invite QR code" className="w-64 h-64" />
+            ) : (
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            )}
           </div>
           <div className="text-center">
             <div className="text-sm text-muted-foreground">{organizationName}</div>
