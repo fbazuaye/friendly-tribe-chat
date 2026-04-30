@@ -11,8 +11,10 @@ import {
   Copy, 
   Check, 
   Loader2,
-  Users
+  Users,
+  QrCode
 } from "lucide-react";
+import { QRCodeDialog } from "./QRCodeDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +45,7 @@ export function InviteCodeManager() {
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
 
   useEffect(() => {
     fetchOrganizationData();
@@ -195,6 +198,26 @@ export function InviteCodeManager() {
             with the default "user" role and 100 monthly tokens.
           </p>
         </div>
+
+        {/* QR Code Button */}
+        <Button
+          variant="outline"
+          className="w-full gap-2"
+          onClick={() => setQrOpen(true)}
+          disabled={!inviteCode}
+        >
+          <QrCode className="w-4 h-4" />
+          Show QR Code (for flyers & posters)
+        </Button>
+
+        {inviteCode && organizationName && (
+          <QRCodeDialog
+            open={qrOpen}
+            onOpenChange={setQrOpen}
+            inviteCode={inviteCode}
+            organizationName={organizationName}
+          />
+        )}
 
         {/* Regenerate Button */}
         <AlertDialog>
