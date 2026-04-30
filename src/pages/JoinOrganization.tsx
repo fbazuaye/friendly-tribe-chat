@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,10 +18,19 @@ import { cn } from "@/lib/utils";
 
 export default function JoinOrganization() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { signOut } = useAuth();
   const { user, hasOrganization, loading } = useOrganizationCheck();
   const { joinOrganization, isLoading, error, clearError } = useJoinOrganization();
   const [inviteCode, setInviteCode] = useState("");
+
+  // Pre-fill from ?code= query param (used by QR codes & shared invite links)
+  useEffect(() => {
+    const codeParam = searchParams.get("code");
+    if (codeParam) {
+      setInviteCode(codeParam.toUpperCase());
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!loading) {
