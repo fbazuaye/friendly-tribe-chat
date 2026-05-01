@@ -1,64 +1,96 @@
-# QR Code Generator + Playbook v2
+## Goal
 
-Two deliverables, executed in order.
+Add a **Geo Analytics** tab to the Admin Dashboard showing site-visit insights: total visits, unique visitors, top countries, devices, browsers, OS, top pages, referrers, and a daily trend chart.
 
----
+## Approach
 
-## Part 1 — Admin QR Code Generator
+We'll capture lightweight, privacy-friendly visit events from the live app and aggregate them in our backend, then render the results in a new admin tab. No third-party analytics service required.
 
-### What it does
-Adds a **Show QR Code** button to the Admin Dashboard's Invite Code card. Clicking it opens a dialog with a high-resolution QR code that encodes a pre-filled join URL. Admins can download a PNG (for digital sharing) or print a branded sheet (for flyers, posters, rally banners).
+```text
+Visitor → App loads → log-visit edge fn → page_visits table
+                                              │
+                                              ▼
+                                Admin Dashboard › Geo tab (charts)
+```
 
-### How it works for the user
-1. Admin opens **Admin Dashboard → Invite Codes**.
-2. Clicks **Show QR Code (for flyers & posters)**.
-3. Dialog shows: large QR code, organization name, the invite code itself, plus **Download PNG** and **Print** buttons.
-4. When a supporter scans the QR with their phone camera, it opens `https://<app-url>/join-organization?code=LIVEGIG2026`. The join page reads the `?code=` parameter and pre-fills the invite-code input — they just sign up and they're in.
+### 1. Database
 
-### Files to create / modify
-- **NEW** `src/components/admin/QRCodeDialog.tsx` — the dialog. Uses the `qrcode` npm package (~20 KB) to render a 512×512 canvas (Pulse navy on white). Print opens a new window with a clean branded layout including the "Designed by Frank Bazuaye · Powered by LiveGig Ltd" footer.
-- **EDIT** `src/components/admin/InviteCodeManager.tsx` — add `QrCode` icon import, a `qrOpen` state, a new full-width outline button between the Copy area and the Regenerate button, and render `<QRCodeDialog>` controlled by that state.
-- **EDIT** `src/pages/JoinOrganization.tsx` — import `useSearchParams` from react-router, read `?code=` on mount, and pre-fill the invite code state (uppercased).
-- **EDIT** `package.json` — add `qrcode` and `@types/qrcode`.
+New table `public.page_visits`:
+- `id`, `created_at`
+- `session_id` (uuid stored in `localStorage` to count unique visitors)
+- `user_id` (nullable — set if logged in)
+- `organization_id` (nullable — set if logged in)
+- `path` (e.g. `/join-organization`)
+- `referrer`
+- `country`, `country_code`, `region`, `city` (from IP geolocation)
+- `device_type` (mobile / tablet / desktop)
+- `browser`, `os`
+- `user_agent`
+- `ip_hash` (SHA-256 of IP, never raw IP)
 
-No backend, DB, or RLS changes.
+RLS:
+- INSERT: allow anon + authenticated (so anonymous visitors can be logged via the edge function using service role; client never inserts directly).
+- SELECT: only org admins (`is_org_admin`) — admins see only their org's visits, plus rows where `organization_id IS NULL` (pre-login pages like `/`, `/auth`, `/join-organization`) restricted to super_admin only.
 
----
+Indexes on `created_at`, `country_code`, `device_type`, `path`.
 
-## Part 2 — Regenerate Acquisition Playbook (v2)
+### 2. Edge function `log-visit` (verify_jwt = false)
 
-Rebuild `/mnt/documents/Pulse-Acquisition-Playbook_v2.docx` (and `.pdf`) by inserting a new section after "Acquisition Engine" titled:
+- Accepts `{ path, referrer, session_id, user_id? }`.
+- Reads visitor IP from `x-forwarded-for` / `cf-connecting-ip`.
+- Geolocates IP using free `ipapi.co/{ip}/json/` (no key needed; ~1k req/day free) with a fallback to `ip-api.com`. Cache results in-memory per cold start by IP.
+- Parses `user-agent` with a small inline UA parser (no dep) for `device_type`, `browser`, `os`.
+- Hashes IP with SHA-256 before storing.
+- Inserts row using service role. Fails silently (returns 200) so it never breaks the app.
 
-### "Auto-Subscribe: Guarantee Reach From Day One"
+### 3. Client tracking hook
 
-The section explains:
+`src/hooks/usePageTracking.tsx`:
+- Generates/persists a `pulse_session_id` in `localStorage`.
+- On every route change (via `useLocation`), debounced ~500ms, fires `supabase.functions.invoke('log-visit', { body: { path, referrer: document.referrer, session_id, user_id } })`.
+- Skips known bot UAs and admin-only routes (configurable).
 
-1. **The problem** — Without auto-subscribe, every new supporter who installs Pulse must hunt for and join the Main channel. Real-world drop-off: 40–60% never do, gutting effective reach.
+Mounted once in `src/App.tsx` inside the router.
 
-2. **How the admin tool works** (written for non-technical campaign managers):
-   - In **Admin Dashboard → Broadcast Channels**, every channel has a **"Default Channel"** toggle.
-   - When ON, every new user who joins the org (via invite code or QR scan) is **automatically subscribed** the moment their account is created.
-   - Multiple channels can be marked default (e.g., "Main Announcements" + the user's regional ward channel).
-   - Existing users are **not** retroactively subscribed (avoids spam complaints) — but admins can run a one-click **"Subscribe all org members"** action per channel when needed.
+### 4. Geo Analytics UI
 
-3. **Recommended setup** for a national campaign:
-   - 1 mandatory **Main Announcements** channel (auto-subscribe ON, locked from unsubscribing).
-   - Optional **regional channels** auto-mapped via per-ward invite codes (e.g., `LAGOS-IKEJA` → "Lagos Ikeja Ward").
-   - Interest channels (Youth, Women, Volunteers) remain opt-in via the Discover tab.
+New component `src/components/admin/GeoAnalytics.tsx` shown under a new "Geo" tab in `AdminDashboard.tsx`:
 
-4. **Per-region invite-code attribution** — each invite code can be tagged with a target channel, so QR codes printed for different wards funnel scanners into the right local channel automatically.
+- **Date range picker**: Last 24h / 7d / 30d / 90d.
+- **Top stat cards**: Total Visits, Unique Visitors, Avg Visits/Day, Top Country.
+- **Daily visits line chart** (recharts — already in project).
+- **Top Countries** table with flag emoji + bar.
+- **Device split** donut (mobile / tablet / desktop).
+- **Browser & OS** mini bar charts.
+- **Top Pages** table.
+- **Top Referrers** table.
 
-5. **Impact** — Lifts effective channel reach from ~40% of installs to **95%+**. Combined with QR distribution at rallies, turns one printed banner into a measurable acquisition funnel.
+Data fetched via a single SECURITY DEFINER RPC `get_visit_analytics(_org_id, _from, _to)` returning JSON with all aggregates (one round-trip, fast).
 
-### Document mechanics
-- Keep existing branding: Navy `#0B1F3A`, Cyan `#06B6D4`, Purple `#8B5CF6`. Pulse logo on cover and in headers.
-- Insert the new section between "Acquisition Engine" and "Projection Table".
-- Update Table of Contents.
-- Save as `Pulse-Acquisition-Playbook_v2.docx` (per artifact-versioning convention) plus a converted `.pdf`.
-- QA: render every page to JPG via LibreOffice + pdftoppm, visually verify branding, TOC numbering, and the new section render cleanly. Iterate if any layout breaks.
+### 5. Tab wiring
 
----
+Add `Geo` tab (icon: `Globe`) to `AdminDashboard.tsx` tabs list, visible to both `admin` and `super_admin`. Increase grid cols accordingly.
 
-## Note on the auto-subscribe backend
+## Privacy notes
 
-The playbook **describes** the auto-subscribe admin tool as the recommended setup pattern. The actual backend (DB column on `broadcast_channels`, signup trigger, admin toggle UI) is **NOT** built in this pass — you didn't ask for it. If after reviewing the playbook you want me to also implement the backend, say the word and I'll add it as Part 3.
+- No raw IPs stored — only SHA-256 hash + coarse geo (country/region/city).
+- Session IDs are random UUIDs, not tied to identity until login.
+- Documented on the admin page with a small "Privacy" footer note.
+
+## Out of scope
+
+- Heatmaps, funnels, A/B testing.
+- Real-time live-visitor counter (can be added later via Supabase Realtime on `page_visits`).
+- Exporting CSV (easy follow-up if wanted).
+
+## Files to create / change
+
+- New: `supabase/functions/log-visit/index.ts`
+- New migration: `page_visits` table + RLS + `get_visit_analytics` RPC
+- New: `src/hooks/usePageTracking.tsx`
+- New: `src/components/admin/GeoAnalytics.tsx`
+- Edit: `src/App.tsx` (mount tracker)
+- Edit: `src/pages/AdminDashboard.tsx` (add Geo tab)
+- Edit: `supabase/config.toml` (add `[functions.log-visit] verify_jwt = false`)
+
+Reply **approve** to proceed.
