@@ -421,6 +421,63 @@ export type Database = {
         }
         Relationships: []
       }
+      page_visits: {
+        Row: {
+          browser: string | null
+          city: string | null
+          country: string | null
+          country_code: string | null
+          created_at: string
+          device_type: string | null
+          id: string
+          ip_hash: string | null
+          organization_id: string | null
+          os: string | null
+          path: string
+          referrer: string | null
+          region: string | null
+          session_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          browser?: string | null
+          city?: string | null
+          country?: string | null
+          country_code?: string | null
+          created_at?: string
+          device_type?: string | null
+          id?: string
+          ip_hash?: string | null
+          organization_id?: string | null
+          os?: string | null
+          path: string
+          referrer?: string | null
+          region?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          browser?: string | null
+          city?: string | null
+          country?: string | null
+          country_code?: string | null
+          created_at?: string
+          device_type?: string | null
+          id?: string
+          ip_hash?: string | null
+          organization_id?: string | null
+          os?: string | null
+          path?: string
+          referrer?: string | null
+          region?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -781,6 +838,10 @@ export type Database = {
       get_user_role: {
         Args: { _org_id: string; _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
+      }
+      get_visit_analytics: {
+        Args: { _from: string; _org_id: string; _to: string }
+        Returns: Json
       }
       has_role: {
         Args: {
