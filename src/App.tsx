@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { usePageTracking } from "@/hooks/usePageTracking";
 import { PresenceProvider } from "@/hooks/useUserPresence";
 import { NotificationPrompt } from "@/components/notifications/NotificationPrompt";
 import { BadgeSync } from "@/components/notifications/BadgeSync";
@@ -28,6 +29,11 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function PageTracker() {
+  usePageTracking();
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -36,6 +42,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <PageTracker />
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<Welcome />} />
