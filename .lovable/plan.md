@@ -1,96 +1,39 @@
-## Goal
+# Pulse Installation Guide (Word Document)
 
-Add a **Geo Analytics** tab to the Admin Dashboard showing site-visit insights: total visits, unique visitors, top countries, devices, browsers, OS, top pages, referrers, and a daily trend chart.
+Generate a downloadable `.docx` installation guide covering iOS and Android, including QR-code onboarding.
 
-## Approach
+## Deliverable
+- `Pulse-Installation-Guide.docx` in `/mnt/documents/`, branded with "Designed by Frank Bazuaye · Powered by LiveGig Ltd"
 
-We'll capture lightweight, privacy-friendly visit events from the live app and aggregate them in our backend, then render the results in a new admin tab. No third-party analytics service required.
+## Document Outline
+1. **Cover** — Title, subtitle, version, date
+2. **What is Pulse** — Short overview (community messaging PWA)
+3. **Before You Begin** — Requirements, invite code / QR code from admin
+4. **Install on iPhone / iPad (iOS 16+)**
+   - Open Safari (must be Safari, not Chrome)
+   - Visit the Pulse URL or scan the QR code with the Camera app
+   - Tap Share → Add to Home Screen → Add
+   - Launch from home screen
+5. **Install on Android (Chrome / Edge)**
+   - Open Chrome
+   - Visit the Pulse URL or scan the QR with Google Lens / Camera
+   - Tap "Install app" prompt, or menu → Install app / Add to Home screen
+   - Launch from home screen / app drawer
+6. **Joining Your Organization**
+   - Method A: Scan QR code (camera opens Pulse with code pre-filled)
+   - Method B: Enter invite code manually at /join-organization
+   - Sign up / sign in, then auto-join
+7. **Enabling Notifications** — Allow push when prompted; iOS requires app to be installed first
+8. **Troubleshooting** — Install prompt missing, QR not scanning, notifications not arriving, clearing cache
+9. **Support** — Contact admin / LiveGig
 
-```text
-Visitor → App loads → log-visit edge fn → page_visits table
-                                              │
-                                              ▼
-                                Admin Dashboard › Geo tab (charts)
-```
+## Generation Approach
+- Use `docx` npm package (already in skill)
+- US Letter, Arial, branded heading styles
+- Numbered step lists for install flows
+- Callout-style table rows for "Tip" / "Note" blocks
+- QA: convert to PDF + page images, inspect each page, fix issues, then deliver
 
-### 1. Database
-
-New table `public.page_visits`:
-- `id`, `created_at`
-- `session_id` (uuid stored in `localStorage` to count unique visitors)
-- `user_id` (nullable — set if logged in)
-- `organization_id` (nullable — set if logged in)
-- `path` (e.g. `/join-organization`)
-- `referrer`
-- `country`, `country_code`, `region`, `city` (from IP geolocation)
-- `device_type` (mobile / tablet / desktop)
-- `browser`, `os`
-- `user_agent`
-- `ip_hash` (SHA-256 of IP, never raw IP)
-
-RLS:
-- INSERT: allow anon + authenticated (so anonymous visitors can be logged via the edge function using service role; client never inserts directly).
-- SELECT: only org admins (`is_org_admin`) — admins see only their org's visits, plus rows where `organization_id IS NULL` (pre-login pages like `/`, `/auth`, `/join-organization`) restricted to super_admin only.
-
-Indexes on `created_at`, `country_code`, `device_type`, `path`.
-
-### 2. Edge function `log-visit` (verify_jwt = false)
-
-- Accepts `{ path, referrer, session_id, user_id? }`.
-- Reads visitor IP from `x-forwarded-for` / `cf-connecting-ip`.
-- Geolocates IP using free `ipapi.co/{ip}/json/` (no key needed; ~1k req/day free) with a fallback to `ip-api.com`. Cache results in-memory per cold start by IP.
-- Parses `user-agent` with a small inline UA parser (no dep) for `device_type`, `browser`, `os`.
-- Hashes IP with SHA-256 before storing.
-- Inserts row using service role. Fails silently (returns 200) so it never breaks the app.
-
-### 3. Client tracking hook
-
-`src/hooks/usePageTracking.tsx`:
-- Generates/persists a `pulse_session_id` in `localStorage`.
-- On every route change (via `useLocation`), debounced ~500ms, fires `supabase.functions.invoke('log-visit', { body: { path, referrer: document.referrer, session_id, user_id } })`.
-- Skips known bot UAs and admin-only routes (configurable).
-
-Mounted once in `src/App.tsx` inside the router.
-
-### 4. Geo Analytics UI
-
-New component `src/components/admin/GeoAnalytics.tsx` shown under a new "Geo" tab in `AdminDashboard.tsx`:
-
-- **Date range picker**: Last 24h / 7d / 30d / 90d.
-- **Top stat cards**: Total Visits, Unique Visitors, Avg Visits/Day, Top Country.
-- **Daily visits line chart** (recharts — already in project).
-- **Top Countries** table with flag emoji + bar.
-- **Device split** donut (mobile / tablet / desktop).
-- **Browser & OS** mini bar charts.
-- **Top Pages** table.
-- **Top Referrers** table.
-
-Data fetched via a single SECURITY DEFINER RPC `get_visit_analytics(_org_id, _from, _to)` returning JSON with all aggregates (one round-trip, fast).
-
-### 5. Tab wiring
-
-Add `Geo` tab (icon: `Globe`) to `AdminDashboard.tsx` tabs list, visible to both `admin` and `super_admin`. Increase grid cols accordingly.
-
-## Privacy notes
-
-- No raw IPs stored — only SHA-256 hash + coarse geo (country/region/city).
-- Session IDs are random UUIDs, not tied to identity until login.
-- Documented on the admin page with a small "Privacy" footer note.
-
-## Out of scope
-
-- Heatmaps, funnels, A/B testing.
-- Real-time live-visitor counter (can be added later via Supabase Realtime on `page_visits`).
-- Exporting CSV (easy follow-up if wanted).
-
-## Files to create / change
-
-- New: `supabase/functions/log-visit/index.ts`
-- New migration: `page_visits` table + RLS + `get_visit_analytics` RPC
-- New: `src/hooks/usePageTracking.tsx`
-- New: `src/components/admin/GeoAnalytics.tsx`
-- Edit: `src/App.tsx` (mount tracker)
-- Edit: `src/pages/AdminDashboard.tsx` (add Geo tab)
-- Edit: `supabase/config.toml` (add `[functions.log-visit] verify_jwt = false`)
-
-Reply **approve** to proceed.
+## Files
+- Script: `/tmp/build-install-guide.js`
+- Output: `/mnt/documents/Pulse-Installation-Guide.docx`
