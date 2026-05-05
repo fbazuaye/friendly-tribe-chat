@@ -122,6 +122,13 @@ Deno.serve(async (req) => {
       metadata: { channel_id, message_type },
     });
 
+    // Compute audience size (subscribers minus owner)
+    const { count: audienceCount } = await supabaseAdmin
+      .from("broadcast_subscribers")
+      .select("*", { count: "exact", head: true })
+      .eq("channel_id", channel_id)
+      .neq("user_id", userId);
+
     // Insert the broadcast message
     const { data: message, error: messageError } = await supabaseAdmin
       .from("broadcast_messages")
@@ -130,6 +137,7 @@ Deno.serve(async (req) => {
         sender_id: userId,
         content,
         message_type,
+        total_recipients: audienceCount ?? 0,
       })
       .select()
       .single();
@@ -156,59 +164,45 @@ Deno.serve(async (req) => {
 
     // Async push notification fan-out (runs after response is sent)
     const pushFanout = async () => {
+      let totalSent = 0;
+      let totalFailed = 0;
       try {
-        let offset = 0;
-        let hasMore = true;
-
-        while (hasMore) {
-          const { data: subscribers } = await supabaseAdmin
-            .from("broadcast_subscribers")
-            .select("user_id")
-            .eq("channel_id", channel_id)
-            .neq("user_id", userId)
-            .range(offset, offset + PUSH_BATCH_SIZE - 1);
-
-          if (!subscribers || subscribers.length === 0) {
-            hasMore = false;
-            break;
-          }
-
-          const subscriberUserIds = subscribers.map((s) => s.user_id);
-
-          const { data: pushSubs } = await supabaseAdmin
-            .from("push_subscriptions")
-            .select("user_id, endpoint, p256dh, auth")
-            .in("user_id", subscriberUserIds);
-
-          if (pushSubs && pushSubs.length > 0) {
-            try {
-              await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${supabaseServiceKey}`,
-                },
-                body: JSON.stringify({
-                  subscriptions: pushSubs,
-                  title: `📢 ${channel.name}`,
-                  body: content.substring(0, 200),
-                  data: { type: "broadcast", channel_id },
-                }),
-              });
-            } catch (pushErr) {
-              console.error("Push notification batch error:", pushErr);
-            }
-          }
-
-          offset += PUSH_BATCH_SIZE;
-          if (subscribers.length < PUSH_BATCH_SIZE) {
-            hasMore = false;
-          }
+        const pushRes = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            type: "broadcast",
+            record: {
+              channel_id,
+              sender_id: userId,
+              content,
+            },
+          }),
+        });
+        if (pushRes.ok) {
+          const json = await pushRes.json().catch(() => ({}));
+          totalSent = Number(json?.sent ?? 0);
+          totalFailed = Number(json?.failed ?? 0);
         }
-
-        console.log(`Push fan-out complete for broadcast ${message.id}, processed ${offset} subscribers`);
+        console.log(`Push fan-out complete for broadcast ${message.id}: sent=${totalSent} failed=${totalFailed}`);
       } catch (fanoutErr) {
         console.error("Push fan-out error:", fanoutErr);
+      } finally {
+        try {
+          await supabaseAdmin
+            .from("broadcast_messages")
+            .update({
+              push_sent_count: totalSent,
+              push_failed_count: totalFailed,
+              delivery_completed_at: new Date().toISOString(),
+            })
+            .eq("id", message.id);
+        } catch (updErr) {
+          console.error("Failed to update delivery stats:", updErr);
+        }
       }
     };
 

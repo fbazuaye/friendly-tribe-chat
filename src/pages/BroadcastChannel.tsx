@@ -12,12 +12,15 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
+import { BroadcastReceipts } from "@/components/broadcast/BroadcastReceipts";
+
 interface BroadcastMessage {
   id: string;
   content: string;
   created_at: string;
   sender_id: string;
   message_type: string;
+  delivery_completed_at?: string | null;
 }
 
 interface ChannelInfo {
@@ -108,6 +111,21 @@ export default function BroadcastChannel() {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "broadcast_messages",
+          filter: `channel_id=eq.${id}`,
+        },
+        (payload) => {
+          const updated = payload.new as BroadcastMessage;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))
+          );
         }
       )
       .subscribe();
@@ -416,6 +434,13 @@ export default function BroadcastChannel() {
               <p className="text-xs opacity-70 mt-1 text-right">
                 {format(new Date(message.created_at), "HH:mm")}
               </p>
+              {isOwner && message.sender_id === user?.id && (
+                <BroadcastReceipts
+                  messageId={message.id}
+                  channelId={id!}
+                  deliveryCompletedAt={message.delivery_completed_at}
+                />
+              )}
             </div>
           ))
         )}
