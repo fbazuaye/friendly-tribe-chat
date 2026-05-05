@@ -373,6 +373,11 @@ export default function BroadcastChannel() {
             </div>
           </div>
 
+          {/* Owner: export channel report */}
+          {isOwner && (
+            <ChannelExportMenu channelId={id!} channelName={channel.name} />
+          )}
+
           {/* Leave button for non-owners */}
           {!isOwner && channel?.is_subscribed && (
             <Button
