@@ -55,6 +55,7 @@ export function ChannelExportMenu({ channelId, channelName }: Props) {
         push_failed_count: Number(r.push_failed_count ?? 0),
         read_count: Number(r.read_count ?? 0),
         delivery_completed_at: r.delivery_completed_at,
+        delivery_legacy: !!r.delivery_legacy,
       }));
       if (rows.length === 0) {
         toast({ title: "Nothing to export", description: "No broadcasts in this period." });
