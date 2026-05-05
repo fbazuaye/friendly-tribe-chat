@@ -111,42 +111,158 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt }:
         <SheetHeader>
           <SheetTitle>Broadcast delivery</SheetTitle>
         </SheetHeader>
-        <div className="mt-4 space-y-3">
-          <Row label="Recipients" value={recipients.toLocaleString()} />
-          <Row
-            label="Push notifications sent"
-            value={stats.push_sent_count.toLocaleString()}
-            sub={
-              recipients > 0
-                ? `${Math.round((stats.push_sent_count / recipients) * 100)}% of audience`
-                : undefined
-            }
-          />
-          <Row
-            label="Push failed / no device"
-            value={stats.push_failed_count.toLocaleString()}
-            sub="Subscribers without active push subscriptions"
-          />
-          <Row
-            label="Reads"
-            value={stats.read_count.toLocaleString()}
-            sub={
-              recipients > 0
-                ? `${Math.round((stats.read_count / recipients) * 100)}% read rate`
-                : undefined
-            }
-          />
-          <Row
-            label="Status"
-            value={
-              stats.delivery_completed_at
-                ? `Delivered ${format(new Date(stats.delivery_completed_at), "PPp")}`
-                : "Delivery in progress…"
-            }
-          />
-        </div>
+        <DeliveryBreakdown stats={stats} recipients={recipients} pending={pending} />
       </SheetContent>
     </Sheet>
+  );
+}
+
+function DeliveryBreakdown({
+  stats,
+  recipients,
+  pending,
+}: {
+  stats: Stats;
+  recipients: number;
+  pending: boolean;
+}) {
+  const delivered = stats.push_sent_count;
+  const failed = stats.push_failed_count;
+  const accountedFor = delivered + failed;
+  const remaining = Math.max(0, recipients - accountedFor);
+  // While fan-out is in progress, "remaining" = pending; after completion, it = no-device subscribers
+  const pendingCount = pending ? remaining : 0;
+  const noDeviceCount = pending ? 0 : remaining;
+
+  const pct = (n: number) => (recipients > 0 ? (n / recipients) * 100 : 0);
+
+  return (
+    <div className="mt-4 space-y-4">
+      {/* Stacked progress bar */}
+      <div>
+        <div className="flex h-3 w-full overflow-hidden rounded-full bg-secondary/60">
+          <div
+            className="bg-emerald-500 transition-all"
+            style={{ width: `${pct(delivered)}%` }}
+            title={`Delivered: ${delivered}`}
+          />
+          <div
+            className="bg-destructive transition-all"
+            style={{ width: `${pct(failed)}%` }}
+            title={`Failed: ${failed}`}
+          />
+          {pendingCount > 0 && (
+            <div
+              className="bg-amber-500 transition-all animate-pulse"
+              style={{ width: `${pct(pendingCount)}%` }}
+              title={`Pending: ${pendingCount}`}
+            />
+          )}
+          {noDeviceCount > 0 && (
+            <div
+              className="bg-muted-foreground/40 transition-all"
+              style={{ width: `${pct(noDeviceCount)}%` }}
+              title={`No push device: ${noDeviceCount}`}
+            />
+          )}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground text-center">
+          {recipients.toLocaleString()} total recipient{recipients === 1 ? "" : "s"}
+        </p>
+      </div>
+
+      {/* Categorized rows with colored dots */}
+      <div className="space-y-2">
+        <BreakdownRow
+          dot="bg-emerald-500"
+          label="Delivered"
+          sub="Push notification accepted by device"
+          count={delivered}
+          recipients={recipients}
+        />
+        <BreakdownRow
+          dot="bg-destructive"
+          label="Push failed"
+          sub="Endpoint rejected or expired"
+          count={failed}
+          recipients={recipients}
+        />
+        {pending ? (
+          <BreakdownRow
+            dot="bg-amber-500"
+            label="Pending"
+            sub="Fan-out still in progress…"
+            count={pendingCount}
+            recipients={recipients}
+            pulse
+          />
+        ) : (
+          <BreakdownRow
+            dot="bg-muted-foreground/40"
+            label="No push device"
+            sub="Subscriber hasn't enabled notifications"
+            count={noDeviceCount}
+            recipients={recipients}
+          />
+        )}
+      </div>
+
+      {/* Reads + status */}
+      <div className="space-y-2 pt-2 border-t border-border/50">
+        <Row
+          label="Reads"
+          value={stats.read_count.toLocaleString()}
+          sub={
+            recipients > 0
+              ? `${Math.round((stats.read_count / recipients) * 100)}% read rate`
+              : undefined
+          }
+        />
+        <Row
+          label="Status"
+          value={
+            stats.delivery_completed_at
+              ? `Delivered ${format(new Date(stats.delivery_completed_at), "PPp")}`
+              : "Delivery in progress…"
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function BreakdownRow({
+  dot,
+  label,
+  sub,
+  count,
+  recipients,
+  pulse,
+}: {
+  dot: string;
+  label: string;
+  sub: string;
+  count: number;
+  recipients: number;
+  pulse?: boolean;
+}) {
+  const pct = recipients > 0 ? Math.round((count / recipients) * 100) : 0;
+  return (
+    <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-secondary/40">
+      <div className="flex items-start gap-2.5 min-w-0">
+        <span
+          className={`mt-1.5 inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${dot} ${pulse ? "animate-pulse" : ""}`}
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="text-sm font-semibold tabular-nums">{count.toLocaleString()}</p>
+        <p className="text-[10px] text-muted-foreground tabular-nums">{pct}%</p>
+      </div>
+    </div>
   );
 }
 
