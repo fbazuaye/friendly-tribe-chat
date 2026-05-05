@@ -1,55 +1,54 @@
-## Broadcast Delivery Receipts
+## Make broadcast delivery & read analytics exportable
 
-Show channel owners how each broadcast performed, right under the message bubble.
+Add export options so channel owners can download per-broadcast delivery and read reports.
 
-### UI
+### What gets exported
 
-In `src/pages/BroadcastChannel.tsx`, owner-sent messages get a small status row:
+For each broadcast message:
+- Channel name, sender, sent timestamp, message preview
+- Total recipients
+- Delivered (push sent)
+- Push failed
+- Pending / No push device
+- Read count + read rate
+- Delivery completed timestamp
+- Per-subscriber breakdown: name, push status (delivered/failed/no device), read status + last_read_at
 
-```text
-[Broadcast text]
-                                   14:32
-Delivered 248/250 · 219 push · 173 read
-```
+### Export formats
 
-- Subtle muted text, icons (Check, Bell, Eye), wraps on small screens.
-- Tap opens a Sheet with a labeled breakdown (recipients, push delivered, push failed, reads, completed timestamp).
-- Live-updates via realtime on `broadcast_messages` UPDATEs and a 30s read-count refetch while the channel is focused.
-- Older messages with `total_recipients = null` show "Stats unavailable".
+- **CSV** — quick spreadsheet import (Excel/Sheets)
+- **PDF** — branded report with Pulse logo, footer "Designed by Frank Bazuaye · Powered by LiveGig Ltd", and the same delivery breakdown bars shown in-app
 
-### Database (migration)
+### UI changes
 
-Add to `broadcast_messages`:
-- `total_recipients integer` (nullable; set at send time)
-- `push_sent_count integer NOT NULL DEFAULT 0`
-- `push_failed_count integer NOT NULL DEFAULT 0`
-- `delivery_completed_at timestamptz`
+In `src/components/broadcast/BroadcastReceipts.tsx` delivery sheet:
+- Add "Export" section at the bottom with two buttons: "Download CSV" and "Download PDF"
+- Owner-only (the sheet already is)
 
-RLS: new UPDATE policy allowing channel owners to update their channel's broadcast rows (so the edge function — and only the owner — can persist counts; edge function uses service role anyway).
+In `src/pages/BroadcastChannel.tsx` channel header (owner view):
+- Add a menu item "Export channel report" that bundles **all** broadcasts in the channel into one CSV/PDF for the chosen date range (last 7d / 30d / all)
 
-RPC `get_broadcast_message_stats(_message_id uuid)`:
-- SECURITY DEFINER, owner-only (raises if caller isn't the channel owner).
-- Returns `total_recipients`, `push_sent_count`, `push_failed_count`, `delivery_completed_at`, plus a live-computed `read_count` from `broadcast_subscribers.last_read_at >= message.created_at` (excluding the owner).
+### Backend
 
-### Edge function: `send-broadcast`
+New RPC `get_broadcast_message_recipient_breakdown(_message_id uuid)`:
+- SECURITY DEFINER, owner-only
+- Returns one row per subscriber: `user_id`, `display_name`, `has_push_device` (bool from `push_subscriptions` existence), `read_at` (last_read_at if >= message.created_at, else null)
+- Excludes the channel owner
 
-- Before insert: count subscribers minus owner → write `total_recipients` on the new message row.
-- Replace the inline push payload with a single call to `send-push-notification` using `{ type: "broadcast", record: { channel_id, sender_id, content } }` (matches existing handler shape, fixes current mismatch where the payload uses an unsupported `subscriptions` field).
-- Sum `sent`/`failed` across batches; in `finally`, update the message with `push_sent_count`, `push_failed_count`, `delivery_completed_at`.
+New RPC `get_channel_broadcast_report(_channel_id uuid, _since timestamptz)`:
+- SECURITY DEFINER, owner-only
+- Returns aggregated stats for every message in the channel since `_since`
 
-### Frontend
+### Frontend implementation
 
-New `src/components/broadcast/BroadcastReceipts.tsx`:
-- Props: `messageId`, `createdAt`, `channelId`.
-- Fetches via `supabase.rpc("get_broadcast_message_stats", { _message_id })`.
-- Renders compact line + Sheet with details.
-- Hooks into existing realtime channel on `broadcast_messages` UPDATEs to refetch when `delivery_completed_at` lands.
-
-`BroadcastChannel.tsx`:
-- Render `<BroadcastReceipts />` under each `isOwner && message.sender_id === user.id` bubble.
-- Extend the existing realtime subscription to also listen for `UPDATE` events (currently only INSERT).
+- Add `src/lib/broadcastExport.ts` with helpers:
+  - `exportMessageCsv(stats, recipients, breakdown)` — builds CSV string, triggers download
+  - `exportMessagePdf(...)` — uses `jspdf` + `jspdf-autotable` to render a branded PDF (logo from `/icon-192.png`, header, summary table, recipient table, footer)
+  - `exportChannelCsv(rows)` / `exportChannelPdf(rows)` for full-channel reports
+- Add `jspdf` and `jspdf-autotable` deps
 
 ### Notes
-- No token-cost changes; receipts are free metadata.
-- No user-visible pricing.
-- Backward-compatible: pre-migration messages simply hide the receipts row.
+
+- No new token costs; reports are free.
+- All URLs in the PDF footer use https://pulse-im.netlify.app/.
+- Bulk SMS not referenced anywhere in this feature.

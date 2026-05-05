@@ -1,24 +1,29 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Check, Bell, Eye, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Check, Bell, Eye, Loader2, FileSpreadsheet, FileText, Download } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "@/hooks/use-toast";
+import {
+  exportMessageCsv,
+  exportMessagePdf,
+  type RecipientRow,
+  type MessageStats,
+} from "@/lib/broadcastExport";
 
-interface Stats {
-  total_recipients: number | null;
-  push_sent_count: number;
-  push_failed_count: number;
-  read_count: number;
-  delivery_completed_at: string | null;
-}
+type Stats = MessageStats;
 
 interface Props {
   messageId: string;
   channelId: string;
   deliveryCompletedAt?: string | null;
+  channelName?: string;
+  messageContent?: string;
+  messageCreatedAt?: string;
 }
 
-export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt }: Props) {
+export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, channelName, messageContent, messageCreatedAt }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -112,8 +117,100 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt }:
           <SheetTitle>Broadcast delivery</SheetTitle>
         </SheetHeader>
         <DeliveryBreakdown stats={stats} recipients={recipients} pending={pending} />
+        <ExportButtons
+          messageId={messageId}
+          channelName={channelName ?? "Broadcast"}
+          messageContent={messageContent ?? ""}
+          messageCreatedAt={messageCreatedAt ?? new Date().toISOString()}
+          stats={stats}
+        />
       </SheetContent>
     </Sheet>
+  );
+}
+
+function ExportButtons({
+  messageId,
+  channelName,
+  messageContent,
+  messageCreatedAt,
+  stats,
+}: {
+  messageId: string;
+  channelName: string;
+  messageContent: string;
+  messageCreatedAt: string;
+  stats: Stats;
+}) {
+  const [busy, setBusy] = useState<"csv" | "pdf" | null>(null);
+
+  const fetchRecipients = async (): Promise<RecipientRow[]> => {
+    const { data, error } = await supabase.rpc("get_broadcast_message_recipient_breakdown", {
+      _message_id: messageId,
+    });
+    if (error) throw error;
+    return (data ?? []).map((r: any) => ({
+      user_id: r.user_id,
+      display_name: r.display_name ?? "",
+      has_push_device: !!r.has_push_device,
+      read_at: r.read_at,
+    }));
+  };
+
+  const run = async (kind: "csv" | "pdf") => {
+    setBusy(kind);
+    try {
+      const recipients = await fetchRecipients();
+      const opts = {
+        channelName,
+        messageId,
+        createdAt: messageCreatedAt,
+        content: messageContent,
+        stats,
+        recipients,
+      };
+      if (kind === "csv") exportMessageCsv(opts);
+      else await exportMessagePdf(opts);
+      toast({ title: "Report ready", description: `Downloaded as ${kind.toUpperCase()}` });
+    } catch (e: any) {
+      toast({
+        title: "Export failed",
+        description: e?.message ?? "Could not generate report",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border/50">
+      <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Download className="w-3 h-3" /> Export this report
+      </p>
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="flex-1"
+          onClick={() => run("csv")}
+          disabled={busy !== null}
+        >
+          {busy === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+          CSV
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="flex-1"
+          onClick={() => run("pdf")}
+          disabled={busy !== null}
+        >
+          {busy === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+          PDF
+        </Button>
+      </div>
+    </div>
   );
 }
 

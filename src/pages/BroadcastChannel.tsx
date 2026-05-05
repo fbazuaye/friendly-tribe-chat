@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
 import { BroadcastReceipts } from "@/components/broadcast/BroadcastReceipts";
+import { ChannelExportMenu } from "@/components/broadcast/ChannelExportMenu";
 
 interface BroadcastMessage {
   id: string;
@@ -373,6 +374,11 @@ export default function BroadcastChannel() {
             </div>
           </div>
 
+          {/* Owner: export channel report */}
+          {isOwner && (
+            <ChannelExportMenu channelId={id!} channelName={channel.name} />
+          )}
+
           {/* Leave button for non-owners */}
           {!isOwner && channel?.is_subscribed && (
             <Button
@@ -439,6 +445,9 @@ export default function BroadcastChannel() {
                   messageId={message.id}
                   channelId={id!}
                   deliveryCompletedAt={message.delivery_completed_at}
+                  channelName={channel.name}
+                  messageContent={message.content}
+                  messageCreatedAt={message.created_at}
                 />
               )}
             </div>
