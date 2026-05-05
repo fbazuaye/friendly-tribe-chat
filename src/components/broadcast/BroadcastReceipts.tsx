@@ -12,7 +12,7 @@ import {
   type MessageStats,
 } from "@/lib/broadcastExport";
 
-type Stats = MessageStats;
+type Stats = MessageStats & { delivery_legacy?: boolean };
 
 interface Props {
   messageId: string;
@@ -40,6 +40,7 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
           push_failed_count: Number(row.push_failed_count ?? 0),
           read_count: Number(row.read_count ?? 0),
           delivery_completed_at: row.delivery_completed_at,
+          delivery_legacy: !!row.delivery_legacy,
         });
       }
     }
@@ -272,15 +273,15 @@ function DeliveryBreakdown({
       <div className="space-y-2">
         <BreakdownRow
           dot="bg-emerald-500"
-          label="Delivered"
-          sub="Push notification accepted by device"
+          label="Push delivered"
+          sub="Push notification accepted by at least one device"
           count={delivered}
           recipients={recipients}
         />
         <BreakdownRow
           dot="bg-destructive"
           label="Push failed"
-          sub="Endpoint rejected or expired"
+          sub="All devices rejected the push"
           count={failed}
           recipients={recipients}
         />
@@ -311,19 +312,26 @@ function DeliveryBreakdown({
           value={stats.read_count.toLocaleString()}
           sub={
             recipients > 0
-              ? `${Math.round((stats.read_count / recipients) * 100)}% read rate`
-              : undefined
+              ? `${Math.round((stats.read_count / recipients) * 100)}% read rate · in-app opens`
+              : "in-app opens"
           }
         />
         <Row
           label="Status"
           value={
-            stats.delivery_completed_at
+            stats.delivery_legacy
+              ? "Delivered (legacy — push tracking unavailable)"
+              : stats.delivery_completed_at
               ? `Delivered ${format(new Date(stats.delivery_completed_at), "PPp")}`
               : "Delivery in progress…"
           }
         />
       </div>
+
+      <p className="text-[11px] text-muted-foreground leading-relaxed px-1">
+        Push delivered counts recipients whose device accepted the push notification.
+        Reads counts recipients who opened the message in-app — a read can happen without a push delivery.
+      </p>
     </div>
   );
 }
