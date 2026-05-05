@@ -439,6 +439,9 @@ export default function BroadcastChannel() {
                   messageId={message.id}
                   channelId={id!}
                   deliveryCompletedAt={message.delivery_completed_at}
+                  channelName={channel.name}
+                  messageContent={message.content}
+                  messageCreatedAt={message.created_at}
                 />
               )}
             </div>
