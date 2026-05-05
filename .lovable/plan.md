@@ -1,39 +1,55 @@
-# Pulse Installation Guide (Word Document)
+## Broadcast Delivery Receipts
 
-Generate a downloadable `.docx` installation guide covering iOS and Android, including QR-code onboarding.
+Show channel owners how each broadcast performed, right under the message bubble.
 
-## Deliverable
-- `Pulse-Installation-Guide.docx` in `/mnt/documents/`, branded with "Designed by Frank Bazuaye · Powered by LiveGig Ltd"
+### UI
 
-## Document Outline
-1. **Cover** — Title, subtitle, version, date
-2. **What is Pulse** — Short overview (community messaging PWA)
-3. **Before You Begin** — Requirements, invite code / QR code from admin
-4. **Install on iPhone / iPad (iOS 16+)**
-   - Open Safari (must be Safari, not Chrome)
-   - Visit the Pulse URL or scan the QR code with the Camera app
-   - Tap Share → Add to Home Screen → Add
-   - Launch from home screen
-5. **Install on Android (Chrome / Edge)**
-   - Open Chrome
-   - Visit the Pulse URL or scan the QR with Google Lens / Camera
-   - Tap "Install app" prompt, or menu → Install app / Add to Home screen
-   - Launch from home screen / app drawer
-6. **Joining Your Organization**
-   - Method A: Scan QR code (camera opens Pulse with code pre-filled)
-   - Method B: Enter invite code manually at /join-organization
-   - Sign up / sign in, then auto-join
-7. **Enabling Notifications** — Allow push when prompted; iOS requires app to be installed first
-8. **Troubleshooting** — Install prompt missing, QR not scanning, notifications not arriving, clearing cache
-9. **Support** — Contact admin / LiveGig
+In `src/pages/BroadcastChannel.tsx`, owner-sent messages get a small status row:
 
-## Generation Approach
-- Use `docx` npm package (already in skill)
-- US Letter, Arial, branded heading styles
-- Numbered step lists for install flows
-- Callout-style table rows for "Tip" / "Note" blocks
-- QA: convert to PDF + page images, inspect each page, fix issues, then deliver
+```text
+[Broadcast text]
+                                   14:32
+Delivered 248/250 · 219 push · 173 read
+```
 
-## Files
-- Script: `/tmp/build-install-guide.js`
-- Output: `/mnt/documents/Pulse-Installation-Guide.docx`
+- Subtle muted text, icons (Check, Bell, Eye), wraps on small screens.
+- Tap opens a Sheet with a labeled breakdown (recipients, push delivered, push failed, reads, completed timestamp).
+- Live-updates via realtime on `broadcast_messages` UPDATEs and a 30s read-count refetch while the channel is focused.
+- Older messages with `total_recipients = null` show "Stats unavailable".
+
+### Database (migration)
+
+Add to `broadcast_messages`:
+- `total_recipients integer` (nullable; set at send time)
+- `push_sent_count integer NOT NULL DEFAULT 0`
+- `push_failed_count integer NOT NULL DEFAULT 0`
+- `delivery_completed_at timestamptz`
+
+RLS: new UPDATE policy allowing channel owners to update their channel's broadcast rows (so the edge function — and only the owner — can persist counts; edge function uses service role anyway).
+
+RPC `get_broadcast_message_stats(_message_id uuid)`:
+- SECURITY DEFINER, owner-only (raises if caller isn't the channel owner).
+- Returns `total_recipients`, `push_sent_count`, `push_failed_count`, `delivery_completed_at`, plus a live-computed `read_count` from `broadcast_subscribers.last_read_at >= message.created_at` (excluding the owner).
+
+### Edge function: `send-broadcast`
+
+- Before insert: count subscribers minus owner → write `total_recipients` on the new message row.
+- Replace the inline push payload with a single call to `send-push-notification` using `{ type: "broadcast", record: { channel_id, sender_id, content } }` (matches existing handler shape, fixes current mismatch where the payload uses an unsupported `subscriptions` field).
+- Sum `sent`/`failed` across batches; in `finally`, update the message with `push_sent_count`, `push_failed_count`, `delivery_completed_at`.
+
+### Frontend
+
+New `src/components/broadcast/BroadcastReceipts.tsx`:
+- Props: `messageId`, `createdAt`, `channelId`.
+- Fetches via `supabase.rpc("get_broadcast_message_stats", { _message_id })`.
+- Renders compact line + Sheet with details.
+- Hooks into existing realtime channel on `broadcast_messages` UPDATEs to refetch when `delivery_completed_at` lands.
+
+`BroadcastChannel.tsx`:
+- Render `<BroadcastReceipts />` under each `isOwner && message.sender_id === user.id` bubble.
+- Extend the existing realtime subscription to also listen for `UPDATE` events (currently only INSERT).
+
+### Notes
+- No token-cost changes; receipts are free metadata.
+- No user-visible pricing.
+- Backward-compatible: pre-migration messages simply hide the receipts row.

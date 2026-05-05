@@ -60,28 +60,40 @@ export type Database = {
           channel_id: string
           content: string
           created_at: string
+          delivery_completed_at: string | null
           id: string
           message_type: string
           metadata: Json | null
+          push_failed_count: number
+          push_sent_count: number
           sender_id: string
+          total_recipients: number | null
         }
         Insert: {
           channel_id: string
           content: string
           created_at?: string
+          delivery_completed_at?: string | null
           id?: string
           message_type?: string
           metadata?: Json | null
+          push_failed_count?: number
+          push_sent_count?: number
           sender_id: string
+          total_recipients?: number | null
         }
         Update: {
           channel_id?: string
           content?: string
           created_at?: string
+          delivery_completed_at?: string | null
           id?: string
           message_type?: string
           metadata?: Json | null
+          push_failed_count?: number
+          push_sent_count?: number
           sender_id?: string
+          total_recipients?: number | null
         }
         Relationships: [
           {
@@ -806,6 +818,17 @@ export type Database = {
         Returns: {
           audience_size: number
           push_ready: number
+        }[]
+      }
+      get_broadcast_message_stats: {
+        Args: { _message_id: string }
+        Returns: {
+          delivery_completed_at: string
+          message_id: string
+          push_failed_count: number
+          push_sent_count: number
+          read_count: number
+          total_recipients: number
         }[]
       }
       get_org_users_paginated: {
