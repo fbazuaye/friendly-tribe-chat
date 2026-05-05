@@ -1,54 +1,43 @@
-## Make broadcast delivery & read analytics exportable
+## Why the report looks wrong
 
-Add export options so channel owners can download per-broadcast delivery and read reports.
+**Row 1 (Completed · 0 delivered · 4 failed · 3 recipients · 1 read):**
+- `push_sent_count` and `push_failed_count` are tallied **per push device**, but "Recipients" counts **unique users**. Three users with multiple devices each can produce 4 failed push attempts. That's why "Failed" exceeds "Recipients".
+- "Delivered = 0" with "1 read" is technically correct: every push endpoint rejected the notification, but the user opened the message in-app. The label "Delivered" makes it look broken.
 
-### What gets exported
+**Rows 2 & 3 ("In progress" with reads):**
+- These broadcasts pre-date the delivery-tracking columns (`push_sent_count`, `delivery_completed_at`). Their counters are 0 / null forever, so the report shows them stuck "In progress" even though they were delivered days ago.
 
-For each broadcast message:
-- Channel name, sender, sent timestamp, message preview
-- Total recipients
-- Delivered (push sent)
-- Push failed
-- Pending / No push device
-- Read count + read rate
-- Delivery completed timestamp
-- Per-subscriber breakdown: name, push status (delivered/failed/no device), read status + last_read_at
+## Fix
 
-### Export formats
+### 1. Backfill legacy broadcasts (migration)
+- Add `delivery_legacy boolean default false` to `broadcast_messages`.
+- For rows where `delivery_completed_at` is null and `created_at < now() - interval '1 hour'`:
+  - Set `delivery_completed_at = created_at`
+  - Set `delivery_legacy = true`
+  - Backfill `total_recipients` from current subscriber count (minus owner) when null/0
+- Update `get_channel_broadcast_report` and `get_broadcast_message_stats` RPCs to return `delivery_legacy`.
 
-- **CSV** — quick spreadsheet import (Excel/Sheets)
-- **PDF** — branded report with Pulse logo, footer "Designed by Frank Bazuaye · Powered by LiveGig Ltd", and the same delivery breakdown bars shown in-app
+### 2. Count per-user, not per-device (edge functions)
+- **`send-push-notification`**: group push subscriptions by `user_id`. A user is:
+  - **delivered** — at least one device accepted the push
+  - **failed** — they had devices but all rejected
+  - **no device** — no push subscription at all
+  Return `{ users_delivered, users_failed, users_no_device, devices_attempted }`.
+- **`send-broadcast`**: write `users_delivered` into `push_sent_count` and `users_failed` into `push_failed_count`. Guarantees `delivered + failed + no_device ≤ total_recipients`.
 
-### UI changes
+### 3. Clarify labels (frontend + exports)
+- Rename **"Delivered"** → **"Push delivered"** in:
+  - `src/components/broadcast/BroadcastReceipts.tsx` (sheet + breakdown bar)
+  - `src/lib/broadcastExport.ts` (CSV headers, PDF tables)
+- Add a one-line note under the PDF/CSV channel report header:
+  *"Push delivered = recipient devices that accepted the push. Reads = recipients who opened the message in-app. Reads can occur without a push delivery."*
+- For rows with `delivery_legacy = true`, render status as **"Delivered (legacy)"** instead of a timestamp, so users know tracking wasn't available for those messages.
 
-In `src/components/broadcast/BroadcastReceipts.tsx` delivery sheet:
-- Add "Export" section at the bottom with two buttons: "Download CSV" and "Download PDF"
-- Owner-only (the sheet already is)
+### 4. Files touched
+- New migration: `broadcast_messages` column + backfill + updated RPCs
+- `supabase/functions/send-push-notification/index.ts`
+- `supabase/functions/send-broadcast/index.ts`
+- `src/lib/broadcastExport.ts`
+- `src/components/broadcast/BroadcastReceipts.tsx`
 
-In `src/pages/BroadcastChannel.tsx` channel header (owner view):
-- Add a menu item "Export channel report" that bundles **all** broadcasts in the channel into one CSV/PDF for the chosen date range (last 7d / 30d / all)
-
-### Backend
-
-New RPC `get_broadcast_message_recipient_breakdown(_message_id uuid)`:
-- SECURITY DEFINER, owner-only
-- Returns one row per subscriber: `user_id`, `display_name`, `has_push_device` (bool from `push_subscriptions` existence), `read_at` (last_read_at if >= message.created_at, else null)
-- Excludes the channel owner
-
-New RPC `get_channel_broadcast_report(_channel_id uuid, _since timestamptz)`:
-- SECURITY DEFINER, owner-only
-- Returns aggregated stats for every message in the channel since `_since`
-
-### Frontend implementation
-
-- Add `src/lib/broadcastExport.ts` with helpers:
-  - `exportMessageCsv(stats, recipients, breakdown)` — builds CSV string, triggers download
-  - `exportMessagePdf(...)` — uses `jspdf` + `jspdf-autotable` to render a branded PDF (logo from `/icon-192.png`, header, summary table, recipient table, footer)
-  - `exportChannelCsv(rows)` / `exportChannelPdf(rows)` for full-channel reports
-- Add `jspdf` and `jspdf-autotable` deps
-
-### Notes
-
-- No new token costs; reports are free.
-- All URLs in the PDF footer use https://pulse-im.netlify.app/.
-- Bulk SMS not referenced anywhere in this feature.
+No new token cost, no UI restructuring — just accurate numbers and clearer labels.

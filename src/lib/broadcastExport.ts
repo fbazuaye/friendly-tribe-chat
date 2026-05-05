@@ -29,7 +29,11 @@ export interface ChannelReportRow {
   push_failed_count: number;
   read_count: number;
   delivery_completed_at: string | null;
+  delivery_legacy?: boolean;
 }
+
+const REPORT_NOTE =
+  "Push delivered = recipients whose device accepted the push notification. Reads = recipients who opened the message in-app. A read can occur without a push delivery; legacy broadcasts pre-date push tracking.";
 
 function downloadBlob(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -155,11 +159,11 @@ export function exportMessageCsv(opts: {
   lines.push([]);
   lines.push(["Summary"]);
   lines.push(["Total recipients", s.recipients]);
-  lines.push(["Delivered (push sent)", s.delivered]);
-  lines.push(["Push failed", s.failed]);
+  lines.push(["Push delivered (per user)", s.delivered]);
+  lines.push(["Push failed (per user)", s.failed]);
   lines.push(["Pending", s.pendingCount]);
   lines.push(["No push device", s.noDevice]);
-  lines.push(["Reads", stats.read_count]);
+  lines.push(["Reads (in-app opens)", stats.read_count]);
   lines.push(["Read rate (%)", s.readRate]);
   lines.push([
     "Status",
@@ -167,6 +171,8 @@ export function exportMessageCsv(opts: {
       ? `Completed ${format(new Date(stats.delivery_completed_at), "yyyy-MM-dd HH:mm:ss")}`
       : "In progress",
   ]);
+  lines.push([]);
+  lines.push(["Note", REPORT_NOTE]);
   lines.push([]);
   lines.push(["Recipient", "Push device", "Read at"]);
   for (const r of recipients) {
@@ -214,10 +220,10 @@ export async function exportMessagePdf(opts: {
     head: [["Metric", "Value"]],
     body: [
       ["Total recipients", String(s.recipients)],
-      ["Delivered (push sent)", `${s.delivered} (${s.recipients ? Math.round((s.delivered / s.recipients) * 100) : 0}%)`],
-      ["Push failed", `${s.failed} (${s.recipients ? Math.round((s.failed / s.recipients) * 100) : 0}%)`],
+      ["Push delivered (per user)", `${s.delivered} (${s.recipients ? Math.round((s.delivered / s.recipients) * 100) : 0}%)`],
+      ["Push failed (per user)", `${s.failed} (${s.recipients ? Math.round((s.failed / s.recipients) * 100) : 0}%)`],
       [s.pending ? "Pending" : "No push device", String(s.pending ? s.pendingCount : s.noDevice)],
-      ["Reads", `${stats.read_count} (${s.readRate}% read rate)`],
+      ["Reads (in-app opens)", `${stats.read_count} (${s.readRate}% read rate)`],
       [
         "Status",
         stats.delivery_completed_at
@@ -261,15 +267,20 @@ export function exportChannelCsv(channelName: string, rows: ChannelReportRow[]) 
     "Sent at",
     "Message",
     "Recipients",
-    "Delivered",
-    "Failed",
+    "Push delivered",
+    "Push failed",
     "Reads",
     "Read rate %",
-    "Completed at",
+    "Status",
   ]);
   for (const r of rows) {
     const recipients = r.total_recipients ?? 0;
     const readRate = recipients > 0 ? Math.round((Number(r.read_count) / recipients) * 100) : 0;
+    const status = r.delivery_legacy
+      ? "Delivered (legacy)"
+      : r.delivery_completed_at
+      ? `Completed ${format(new Date(r.delivery_completed_at), "yyyy-MM-dd HH:mm:ss")}`
+      : "In progress";
     lines.push([
       format(new Date(r.created_at), "yyyy-MM-dd HH:mm:ss"),
       r.content,
@@ -278,9 +289,11 @@ export function exportChannelCsv(channelName: string, rows: ChannelReportRow[]) 
       r.push_failed_count,
       r.read_count,
       readRate,
-      r.delivery_completed_at ? format(new Date(r.delivery_completed_at), "yyyy-MM-dd HH:mm:ss") : "In progress",
+      status,
     ]);
   }
+  lines.push([]);
+  lines.push(["Note", REPORT_NOTE]);
   downloadBlob(
     rowsToCsv(lines),
     `pulse-channel-${safeName(channelName)}-${format(new Date(), "yyyyMMdd-HHmm")}.csv`,
@@ -298,10 +311,15 @@ export async function exportChannelPdf(channelName: string, rows: ChannelReportR
 
   autoTable(doc, {
     startY: 140,
-    head: [["Sent at", "Message", "Recipients", "Delivered", "Failed", "Reads", "Read %", "Status"]],
+    head: [["Sent at", "Message", "Recipients", "Push delivered", "Push failed", "Reads", "Read %", "Status"]],
     body: rows.map((r) => {
       const recipients = r.total_recipients ?? 0;
       const readRate = recipients > 0 ? Math.round((Number(r.read_count) / recipients) * 100) : 0;
+      const status = r.delivery_legacy
+        ? "Delivered (legacy)"
+        : r.delivery_completed_at
+        ? "Completed"
+        : "In progress";
       return [
         format(new Date(r.created_at), "yyyy-MM-dd HH:mm"),
         r.content.length > 80 ? r.content.slice(0, 77) + "…" : r.content,
@@ -310,7 +328,7 @@ export async function exportChannelPdf(channelName: string, rows: ChannelReportR
         String(r.push_failed_count),
         String(r.read_count),
         `${readRate}%`,
-        r.delivery_completed_at ? "Completed" : "In progress",
+        status,
       ];
     }),
     theme: "striped",
@@ -319,6 +337,14 @@ export async function exportChannelPdf(channelName: string, rows: ChannelReportR
     columnStyles: { 1: { cellWidth: 280 } },
     margin: { left: 40, right: 40 },
   });
+
+  const finalY = (doc as any).lastAutoTable?.finalY ?? 140;
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(8);
+  doc.setTextColor(110);
+  const noteLines = doc.splitTextToSize(REPORT_NOTE, doc.internal.pageSize.getWidth() - 80);
+  doc.text(noteLines, 40, finalY + 18);
+  doc.setTextColor(0);
 
   pdfFooter(doc);
   doc.save(`pulse-channel-${safeName(channelName)}-${format(new Date(), "yyyyMMdd-HHmm")}.pdf`);

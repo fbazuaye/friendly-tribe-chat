@@ -284,11 +284,14 @@ Deno.serve(async (req) => {
 
     const payload = JSON.stringify({ title, body, url, tag });
 
-    let sent = 0;
-    let failed = 0;
+    let devicesSent = 0;
+    let devicesFailed = 0;
     const expiredSubscriptionIds: string[] = [];
+    // Per-user outcome: true = at least one device delivered, false = all attempted devices failed
+    const userOutcome = new Map<string, boolean>();
 
     for (const sub of subscriptions) {
+      let deviceDelivered = false;
       try {
         const vapidHeaders = await createVapidAuthHeader(
           sub.endpoint,
@@ -312,20 +315,23 @@ Deno.serve(async (req) => {
         });
 
         if (response.status === 201 || response.status === 200) {
-          sent++;
+          deviceDelivered = true;
+          devicesSent++;
         } else if (response.status === 404 || response.status === 410) {
-          // Subscription expired, mark for deletion
           expiredSubscriptionIds.push(sub.id);
-          failed++;
+          devicesFailed++;
         } else {
           const respText = await response.text();
           console.error(`Push failed for ${sub.endpoint}: ${response.status} ${respText}`);
-          failed++;
+          devicesFailed++;
         }
       } catch (err) {
         console.error(`Push error for ${sub.endpoint}:`, err);
-        failed++;
+        devicesFailed++;
       }
+      // A user is delivered if ANY of their devices accepted the push
+      const prev = userOutcome.get(sub.user_id);
+      userOutcome.set(sub.user_id, prev === true ? true : deviceDelivered);
     }
 
     // Clean up expired subscriptions
@@ -336,8 +342,28 @@ Deno.serve(async (req) => {
         .in('id', expiredSubscriptionIds);
     }
 
+    // Per-user totals
+    let usersDelivered = 0;
+    let usersFailed = 0;
+    for (const ok of userOutcome.values()) {
+      if (ok) usersDelivered++;
+      else usersFailed++;
+    }
+    const usersNoDevice = Math.max(0, recipientUserIds.length - userOutcome.size);
+
     return new Response(
-      JSON.stringify({ sent, failed, expired: expiredSubscriptionIds.length }),
+      JSON.stringify({
+        // Backwards-compatible fields (now per-user)
+        sent: usersDelivered,
+        failed: usersFailed,
+        // New explicit fields
+        users_delivered: usersDelivered,
+        users_failed: usersFailed,
+        users_no_device: usersNoDevice,
+        devices_sent: devicesSent,
+        devices_failed: devicesFailed,
+        expired: expiredSubscriptionIds.length,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
