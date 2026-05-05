@@ -29,7 +29,11 @@ export interface ChannelReportRow {
   push_failed_count: number;
   read_count: number;
   delivery_completed_at: string | null;
+  delivery_legacy?: boolean;
 }
+
+const REPORT_NOTE =
+  "Push delivered = recipients whose device accepted the push notification. Reads = recipients who opened the message in-app. A read can occur without a push delivery; legacy broadcasts pre-date push tracking.";
 
 function downloadBlob(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -155,11 +159,11 @@ export function exportMessageCsv(opts: {
   lines.push([]);
   lines.push(["Summary"]);
   lines.push(["Total recipients", s.recipients]);
-  lines.push(["Delivered (push sent)", s.delivered]);
-  lines.push(["Push failed", s.failed]);
+  lines.push(["Push delivered (per user)", s.delivered]);
+  lines.push(["Push failed (per user)", s.failed]);
   lines.push(["Pending", s.pendingCount]);
   lines.push(["No push device", s.noDevice]);
-  lines.push(["Reads", stats.read_count]);
+  lines.push(["Reads (in-app opens)", stats.read_count]);
   lines.push(["Read rate (%)", s.readRate]);
   lines.push([
     "Status",
@@ -167,6 +171,8 @@ export function exportMessageCsv(opts: {
       ? `Completed ${format(new Date(stats.delivery_completed_at), "yyyy-MM-dd HH:mm:ss")}`
       : "In progress",
   ]);
+  lines.push([]);
+  lines.push(["Note", REPORT_NOTE]);
   lines.push([]);
   lines.push(["Recipient", "Push device", "Read at"]);
   for (const r of recipients) {
@@ -214,10 +220,10 @@ export async function exportMessagePdf(opts: {
     head: [["Metric", "Value"]],
     body: [
       ["Total recipients", String(s.recipients)],
-      ["Delivered (push sent)", `${s.delivered} (${s.recipients ? Math.round((s.delivered / s.recipients) * 100) : 0}%)`],
-      ["Push failed", `${s.failed} (${s.recipients ? Math.round((s.failed / s.recipients) * 100) : 0}%)`],
+      ["Push delivered (per user)", `${s.delivered} (${s.recipients ? Math.round((s.delivered / s.recipients) * 100) : 0}%)`],
+      ["Push failed (per user)", `${s.failed} (${s.recipients ? Math.round((s.failed / s.recipients) * 100) : 0}%)`],
       [s.pending ? "Pending" : "No push device", String(s.pending ? s.pendingCount : s.noDevice)],
-      ["Reads", `${stats.read_count} (${s.readRate}% read rate)`],
+      ["Reads (in-app opens)", `${stats.read_count} (${s.readRate}% read rate)`],
       [
         "Status",
         stats.delivery_completed_at
