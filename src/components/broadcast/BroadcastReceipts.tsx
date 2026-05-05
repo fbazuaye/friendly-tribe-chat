@@ -1,21 +1,26 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Check, Bell, Eye, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Check, Bell, Eye, Loader2, FileSpreadsheet, FileText, Download } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "@/hooks/use-toast";
+import {
+  exportMessageCsv,
+  exportMessagePdf,
+  type RecipientRow,
+  type MessageStats,
+} from "@/lib/broadcastExport";
 
-interface Stats {
-  total_recipients: number | null;
-  push_sent_count: number;
-  push_failed_count: number;
-  read_count: number;
-  delivery_completed_at: string | null;
-}
+type Stats = MessageStats;
 
 interface Props {
   messageId: string;
   channelId: string;
   deliveryCompletedAt?: string | null;
+  channelName?: string;
+  messageContent?: string;
+  messageCreatedAt?: string;
 }
 
 export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt }: Props) {
