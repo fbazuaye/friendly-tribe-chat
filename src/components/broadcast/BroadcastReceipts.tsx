@@ -23,7 +23,7 @@ interface Props {
   messageCreatedAt?: string;
 }
 
-export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt }: Props) {
+export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, channelName, messageContent, messageCreatedAt }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
