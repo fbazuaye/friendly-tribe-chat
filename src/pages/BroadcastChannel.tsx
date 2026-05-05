@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
 import { BroadcastReceipts } from "@/components/broadcast/BroadcastReceipts";
+import { ChannelExportMenu } from "@/components/broadcast/ChannelExportMenu";
 
 interface BroadcastMessage {
   id: string;
