@@ -820,9 +820,31 @@ export type Database = {
           push_ready: number
         }[]
       }
+      get_broadcast_message_recipient_breakdown: {
+        Args: { _message_id: string }
+        Returns: {
+          display_name: string
+          has_push_device: boolean
+          read_at: string
+          user_id: string
+        }[]
+      }
       get_broadcast_message_stats: {
         Args: { _message_id: string }
         Returns: {
+          delivery_completed_at: string
+          message_id: string
+          push_failed_count: number
+          push_sent_count: number
+          read_count: number
+          total_recipients: number
+        }[]
+      }
+      get_channel_broadcast_report: {
+        Args: { _channel_id: string; _since: string }
+        Returns: {
+          content: string
+          created_at: string
           delivery_completed_at: string
           message_id: string
           push_failed_count: number
