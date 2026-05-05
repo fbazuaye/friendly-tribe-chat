@@ -267,15 +267,20 @@ export function exportChannelCsv(channelName: string, rows: ChannelReportRow[]) 
     "Sent at",
     "Message",
     "Recipients",
-    "Delivered",
-    "Failed",
+    "Push delivered",
+    "Push failed",
     "Reads",
     "Read rate %",
-    "Completed at",
+    "Status",
   ]);
   for (const r of rows) {
     const recipients = r.total_recipients ?? 0;
     const readRate = recipients > 0 ? Math.round((Number(r.read_count) / recipients) * 100) : 0;
+    const status = r.delivery_legacy
+      ? "Delivered (legacy)"
+      : r.delivery_completed_at
+      ? `Completed ${format(new Date(r.delivery_completed_at), "yyyy-MM-dd HH:mm:ss")}`
+      : "In progress";
     lines.push([
       format(new Date(r.created_at), "yyyy-MM-dd HH:mm:ss"),
       r.content,
@@ -284,9 +289,11 @@ export function exportChannelCsv(channelName: string, rows: ChannelReportRow[]) 
       r.push_failed_count,
       r.read_count,
       readRate,
-      r.delivery_completed_at ? format(new Date(r.delivery_completed_at), "yyyy-MM-dd HH:mm:ss") : "In progress",
+      status,
     ]);
   }
+  lines.push([]);
+  lines.push(["Note", REPORT_NOTE]);
   downloadBlob(
     rowsToCsv(lines),
     `pulse-channel-${safeName(channelName)}-${format(new Date(), "yyyyMMdd-HHmm")}.csv`,
@@ -304,10 +311,15 @@ export async function exportChannelPdf(channelName: string, rows: ChannelReportR
 
   autoTable(doc, {
     startY: 140,
-    head: [["Sent at", "Message", "Recipients", "Delivered", "Failed", "Reads", "Read %", "Status"]],
+    head: [["Sent at", "Message", "Recipients", "Push delivered", "Push failed", "Reads", "Read %", "Status"]],
     body: rows.map((r) => {
       const recipients = r.total_recipients ?? 0;
       const readRate = recipients > 0 ? Math.round((Number(r.read_count) / recipients) * 100) : 0;
+      const status = r.delivery_legacy
+        ? "Delivered (legacy)"
+        : r.delivery_completed_at
+        ? "Completed"
+        : "In progress";
       return [
         format(new Date(r.created_at), "yyyy-MM-dd HH:mm"),
         r.content.length > 80 ? r.content.slice(0, 77) + "…" : r.content,
@@ -316,7 +328,7 @@ export async function exportChannelPdf(channelName: string, rows: ChannelReportR
         String(r.push_failed_count),
         String(r.read_count),
         `${readRate}%`,
-        r.delivery_completed_at ? "Completed" : "In progress",
+        status,
       ];
     }),
     theme: "striped",
@@ -325,6 +337,14 @@ export async function exportChannelPdf(channelName: string, rows: ChannelReportR
     columnStyles: { 1: { cellWidth: 280 } },
     margin: { left: 40, right: 40 },
   });
+
+  const finalY = (doc as any).lastAutoTable?.finalY ?? 140;
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(8);
+  doc.setTextColor(110);
+  const noteLines = doc.splitTextToSize(REPORT_NOTE, doc.internal.pageSize.getWidth() - 80);
+  doc.text(noteLines, 40, finalY + 18);
+  doc.setTextColor(0);
 
   pdfFooter(doc);
   doc.save(`pulse-channel-${safeName(channelName)}-${format(new Date(), "yyyyMMdd-HHmm")}.pdf`);
