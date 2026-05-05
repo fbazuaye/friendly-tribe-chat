@@ -33,7 +33,12 @@ export interface ChannelReportRow {
 }
 
 const REPORT_NOTE =
-  "Push delivered = recipients whose device accepted the push notification. Reads = recipients who opened the message in-app. A read can occur without a push delivery; legacy broadcasts pre-date push tracking.";
+  "Recipients = unique channel subscribers targeted by the broadcast (excluding the sender). " +
+  "Push delivered = recipients whose device accepted the push notification. " +
+  "Push failed = recipients whose device(s) rejected the push (e.g. expired token, revoked permission, or network error); a single failed user is counted once even if they have multiple devices. " +
+  "Reads = recipients who opened the message in-app. A read can occur without a push delivery (e.g. the user opens the app directly). " +
+  "Read % = Reads ÷ Recipients. " +
+  "Status: Completed = push fan-out finished; In progress = push fan-out still running; Delivered (legacy) = broadcast pre-dates push tracking, so per-device delivery counts are unavailable but reads are accurate.";
 
 function downloadBlob(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
