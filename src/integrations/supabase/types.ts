@@ -61,6 +61,7 @@ export type Database = {
           content: string
           created_at: string
           delivery_completed_at: string | null
+          delivery_legacy: boolean
           id: string
           message_type: string
           metadata: Json | null
@@ -74,6 +75,7 @@ export type Database = {
           content: string
           created_at?: string
           delivery_completed_at?: string | null
+          delivery_legacy?: boolean
           id?: string
           message_type?: string
           metadata?: Json | null
@@ -87,6 +89,7 @@ export type Database = {
           content?: string
           created_at?: string
           delivery_completed_at?: string | null
+          delivery_legacy?: boolean
           id?: string
           message_type?: string
           metadata?: Json | null
@@ -833,6 +836,7 @@ export type Database = {
         Args: { _message_id: string }
         Returns: {
           delivery_completed_at: string
+          delivery_legacy: boolean
           message_id: string
           push_failed_count: number
           push_sent_count: number
@@ -846,6 +850,7 @@ export type Database = {
           content: string
           created_at: string
           delivery_completed_at: string
+          delivery_legacy: boolean
           message_id: string
           push_failed_count: number
           push_sent_count: number
