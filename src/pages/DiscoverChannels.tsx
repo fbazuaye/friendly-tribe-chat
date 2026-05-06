@@ -206,7 +206,7 @@ export default function DiscoverChannels() {
           <p className="text-sm text-muted-foreground">
             {searchQuery
               ? "No channels match your search"
-              : "You've joined all available channels in your organization"}
+              : "You're already subscribed to every channel in your organization"}
           </p>
         </div>
       )}
