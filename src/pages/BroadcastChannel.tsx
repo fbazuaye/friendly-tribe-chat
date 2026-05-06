@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Radio, Users, Send, Loader2, Crown, LogOut, Zap, Clock, Coins } from "lucide-react";
+import { ArrowLeft, Radio, Users, Send, Loader2, Crown, LogOut, Zap, Clock, Coins, UserPlus } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,6 +48,31 @@ export default function BroadcastChannel() {
   const [isSending, setIsSending] = useState(false);
   const [audienceStats, setAudienceStats] = useState<{ audience: number; pushReady: number } | null>(null);
   const [isLoadingAudience, setIsLoadingAudience] = useState(false);
+  const [isBulkAdding, setIsBulkAdding] = useState(false);
+
+  const handleBulkAddOrgMembers = async () => {
+    if (!id || isBulkAdding) return;
+    if (!confirm("Add every organization member to this channel? This may take a moment for large orgs.")) return;
+    setIsBulkAdding(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("bulk-subscribe", {
+        body: { channel_id: id, mode: "all_org_members" },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast({
+        title: "Subscribers added",
+        description: `${data?.inserted ?? 0} new subscribers (${data?.requested ?? 0} requested).`,
+      });
+      loadChannel();
+      loadAudienceStats(id);
+    } catch (err: any) {
+      console.error("bulk add err:", err);
+      toast({ title: "Bulk add failed", description: err.message || "Try again", variant: "destructive" });
+    } finally {
+      setIsBulkAdding(false);
+    }
+  };
 
   const isOwner = user?.id === channel?.owner_id;
 
@@ -373,6 +398,19 @@ export default function BroadcastChannel() {
               </div>
             </div>
           </div>
+
+          {/* Owner: bulk add org members */}
+          {isOwner && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleBulkAddOrgMembers}
+              disabled={isBulkAdding}
+              title="Add all org members as subscribers"
+            >
+              {isBulkAdding ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5" />}
+            </Button>
+          )}
 
           {/* Owner: export channel report */}
           {isOwner && (

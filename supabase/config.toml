@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.deliver-batch]
 verify_jwt = false
+
+[functions.bulk-subscribe]
+verify_jwt = false
