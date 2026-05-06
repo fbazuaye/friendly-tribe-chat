@@ -249,3 +249,104 @@ async function deliverSms(supabase: any, job: any) {
   if (!resp.ok) return { success: false, sent: 0, failed: phones.length, error: text.slice(0, 500) };
   return { success: true, sent: phones.length, failed: 0, error: null };
 }
+
+// ---- Expanders ----
+async function expandBroadcast(supabase: any, job: any) {
+  const { channel_id, owner_id, cursor, page_size = 5000, batch_size = 100, notification } = job.payload || {};
+  if (!channel_id || !notification) throw new Error("invalid enqueue_broadcast payload");
+
+  let query = supabase
+    .from("broadcast_subscribers")
+    .select("id, user_id")
+    .eq("channel_id", channel_id)
+    .neq("user_id", owner_id)
+    .order("id", { ascending: true })
+    .limit(page_size);
+
+  if (cursor) query = query.gt("id", cursor);
+
+  const { data: subs, error } = await query;
+  if (error) throw error;
+  const rows = subs || [];
+  if (rows.length === 0) {
+    // Nothing more — mark message complete if no push jobs were ever created
+    await supabase.rpc("check_and_complete_broadcast", { _message_id: job.parent_id }).catch(() => {});
+    return { enqueued: 0, done: true };
+  }
+
+  const recipientIds = rows.map((r: any) => r.user_id);
+  const pushJobs: any[] = [];
+  for (let i = 0; i < recipientIds.length; i += batch_size) {
+    pushJobs.push({
+      job_type: "push",
+      parent_id: job.parent_id,
+      organization_id: job.organization_id,
+      recipient_user_ids: recipientIds.slice(i, i + batch_size),
+      payload: notification,
+    });
+  }
+  // Insert push jobs in chunks of 500
+  for (let i = 0; i < pushJobs.length; i += 500) {
+    const { error: insErr } = await supabase.from("delivery_jobs").insert(pushJobs.slice(i, i + 500));
+    if (insErr) console.error("push jobs insert err:", insErr);
+  }
+
+  // Increment total_recipients on broadcast_messages
+  const { data: cur } = await supabase
+    .from("broadcast_messages")
+    .select("total_recipients")
+    .eq("id", job.parent_id)
+    .single();
+  await supabase
+    .from("broadcast_messages")
+    .update({ total_recipients: (Number(cur?.total_recipients) || 0) + recipientIds.length })
+    .eq("id", job.parent_id);
+
+  // If we filled the page, schedule another expander
+  if (rows.length === page_size) {
+    const lastId = rows[rows.length - 1].id;
+    await supabase.from("delivery_jobs").insert({
+      job_type: "enqueue_broadcast",
+      parent_id: job.parent_id,
+      organization_id: job.organization_id,
+      payload: { ...job.payload, cursor: lastId },
+    });
+    return { enqueued: recipientIds.length, done: false };
+  }
+
+  return { enqueued: recipientIds.length, done: true };
+}
+
+async function expandSms(supabase: any, job: any) {
+  const { message, phone_numbers = [], offset = 0, page_size = 5000, batch_size = 50 } = job.payload || {};
+  if (!message) throw new Error("invalid enqueue_sms payload");
+
+  const slice = phone_numbers.slice(offset, offset + page_size);
+  if (slice.length === 0) return { enqueued: 0, done: true };
+
+  const smsJobs: any[] = [];
+  for (let i = 0; i < slice.length; i += batch_size) {
+    smsJobs.push({
+      job_type: "sms",
+      parent_id: job.parent_id,
+      organization_id: job.organization_id,
+      phone_numbers: slice.slice(i, i + batch_size),
+      payload: { message },
+    });
+  }
+  for (let i = 0; i < smsJobs.length; i += 500) {
+    const { error: insErr } = await supabase.from("delivery_jobs").insert(smsJobs.slice(i, i + 500));
+    if (insErr) console.error("sms jobs insert err:", insErr);
+  }
+
+  if (offset + slice.length < phone_numbers.length) {
+    await supabase.from("delivery_jobs").insert({
+      job_type: "enqueue_sms",
+      parent_id: job.parent_id,
+      organization_id: job.organization_id,
+      payload: { ...job.payload, offset: offset + slice.length },
+    });
+    return { enqueued: slice.length, done: false };
+  }
+  return { enqueued: slice.length, done: true };
+}
