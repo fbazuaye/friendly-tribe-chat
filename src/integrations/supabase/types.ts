@@ -875,6 +875,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bulk_subscribe_users: {
+        Args: { _channel_id: string; _user_ids: string[] }
+        Returns: number
+      }
       check_token_balance: {
         Args: { _org_id: string; _required: number; _user_id: string }
         Returns: boolean
