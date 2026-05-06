@@ -1,95 +1,48 @@
-# Scale broadcasts and SMS to 1M recipients
+# Load-test edge function for 1M-member broadcast
 
-Implement all 5 items from the prior capacity analysis so a single broadcast or SMS blast can reliably fan out to 1M+ recipients.
+Add a super-admin-only edge function that synthesizes fake subscribers on a real channel and (optionally) fires a real broadcast through the queue, so you can watch `BroadcastReceipts` fill in real time.
 
-## 1. Chunked, async enqueue in `send-broadcast`
+## New file: `supabase/functions/load-test-broadcast/index.ts`
 
-Currently `send-broadcast` reads all subscribers and inserts all `delivery_jobs` in one synchronous call — fails past ~50k.
-
-Changes to `supabase/functions/send-broadcast/index.ts`:
-- After inserting the `broadcast_messages` row and charging the token, do **not** enqueue inline.
-- Insert a single seed row into `delivery_jobs` with `job_type = 'enqueue_broadcast'`, `parent_id = message.id`, `payload = { channel_id, message_id, cursor: null, page_size: 5000 }`.
-- Return immediately with `{ message_id, status: 'queued' }`.
-
-New handler in `supabase/functions/deliver-batch/index.ts` for `job_type = 'enqueue_broadcast'`:
-- Page `broadcast_subscribers` by `(channel_id, id)` cursor, 5,000 rows at a time, excluding the channel owner.
-- For each page, insert N `delivery_jobs` rows with `job_type = 'push'` in batches of 100 user_ids per row.
-- If more pages remain, insert a follow-up `enqueue_broadcast` job with the next cursor and mark the current one succeeded.
-- Update `broadcast_messages.total_recipients` incrementally (`total_recipients = COALESCE(total_recipients,0) + page_count`).
-
-Same pattern for `send-bulk-sms`: seed a single `enqueue_sms` job carrying the contact filter / cursor; expander walks `sms_contacts` in pages and emits `job_type='sms'` rows of 100 phone numbers each.
-
-## 2. Bulk subscriber import (admin)
-
-For 1M-member channels, per-row inserts via UI + trigger don't scale.
-
-DB migration:
-- New SECURITY DEFINER RPC `bulk_subscribe_users(_channel_id uuid, _user_ids uuid[])`:
-  - Authz: caller must be channel owner.
-  - `INSERT ... SELECT unnest(_user_ids) ON CONFLICT DO NOTHING`.
-  - Recompute `subscriber_count` once at the end with `UPDATE broadcast_channels SET subscriber_count = (SELECT count(*) FROM broadcast_subscribers WHERE channel_id=_channel_id)`.
-- Drop the per-row `update_broadcast_subscriber_count` trigger and replace with statement-level recompute, OR keep trigger but have the RPC bypass via `session_replication_role = 'replica'` for that statement (we'll go with statement-level recompute — simpler, safer).
-
-UI: Add "Bulk add subscribers" action in `BroadcastChannel.tsx` admin panel with two modes:
-- "Add all org members" (one click).
-- CSV upload of phone numbers / emails resolved to user_ids server-side.
-
-Calls a new edge function `bulk-subscribe` that chunks into 5,000-id RPC calls.
-
-## 3. Higher worker throughput
-
-`supabase/functions/dispatch-jobs/index.ts`:
-- Raise `CLAIM_LIMIT` from 50 → 200.
-- After claiming, fan out `deliver-batch` invocations in parallel batches of 25 (currently sequential `for` loop with `.catch`, which is already non-blocking but unbounded — switch to `Promise.allSettled` over chunks to bound concurrency).
-
-Cron schedule (insert via `psql`-style SQL using `supabase--read_query` is not allowed for writes — handled in default mode):
-- Reschedule `dispatch-jobs` from every minute to every 10 seconds via `cron.schedule` (drop + recreate).
-- Add a second cron `dispatch-jobs-burst` running every 10s offset by 5s, so effective tick is 5s.
-
-At 200 jobs × 6 ticks/min × 2 workers = 2,400 jobs/min ≈ 240k recipients/min for push, well above the 10k batches needed for 1M.
-
-## 4. Performance indexes
-
-DB migration `add_scale_indexes`:
-```sql
-create index if not exists idx_broadcast_subscribers_channel_lastread
-  on broadcast_subscribers (channel_id, last_read_at);
-create index if not exists idx_broadcast_subscribers_channel_id
-  on broadcast_subscribers (channel_id, id);  -- cursor pagination
-create index if not exists idx_delivery_jobs_parent_status
-  on delivery_jobs (parent_id, status);
-create index if not exists idx_delivery_jobs_status_next_attempt
-  on delivery_jobs (status, next_attempt_at) where status = 'pending';
-create index if not exists idx_push_subscriptions_user
-  on push_subscriptions (user_id);
-create index if not exists idx_sms_contacts_org_id
-  on sms_contacts (organization_id, id);  -- cursor pagination
+POST body:
+```
+{
+  "channel_id": "uuid",          // required, must be a channel you own
+  "count": 1000000,              // # of fake subscribers to insert (capped at 1,000,000)
+  "send_broadcast": true,        // if true, also fire a broadcast through the queue
+  "content": "Load test",        // broadcast text (default: "Load test broadcast")
+  "cleanup": false               // if true, first delete fake subs (rows with no matching profile) on this channel
+}
 ```
 
-Also widen `broadcast_messages.total_recipients` from `integer` to `bigint` (defensive; 1M fits in int but campaigns may exceed).
+Behavior:
+- Authn: requires Bearer token; resolves user via `getClaims`.
+- Authz: caller must be `super_admin` of the channel's org **and** the channel owner.
+- Generates random UUIDs in 5,000-id batches and calls `bulk_subscribe_users` RPC (already exists, idempotent via `ON CONFLICT DO NOTHING`).
+- If `send_broadcast=true`: inserts a `broadcast_messages` row (with `metadata.load_test=true`, no token charge) and seeds an `enqueue_broadcast` `delivery_jobs` row — same path as `send-broadcast`, just bypassing the token gate.
+- Returns `{ inserted_fake_subscribers, subscribe_ms, broadcast: { message_id, watch_url }, total_ms }`.
 
-## 5. Capacity & UX notes
+Notes:
+- Fake subscribers won't have `push_subscriptions` rows, so they'll be counted as "no-device failures" in `recipients_failed`. That's expected — the goal is to measure enqueue + worker throughput and verify progress bars.
+- Cleanup mode deletes any subscriber on the channel whose `user_id` is not in `profiles` for the channel's org (i.e., the load-test artifacts).
 
-- Update `BroadcastReceipts.tsx` and `SMSHistory.tsx` to show an "Enqueueing…" state while the seed `enqueue_*` job is still pending (i.e. `total_recipients` is null or growing). The existing progress bars already poll `get_delivery_progress` and will pick up jobs as they're created.
-- Add a small admin doc note in the Broadcast composer: "Channels with >100k subscribers may take several minutes to fully deliver."
-- Memory update: record the new 1M capacity ceiling and the bulk-subscribe path in `mem://constraints/member-capacity-recommendations`.
+## `supabase/config.toml`
 
-## Files touched
+Register the new function with `verify_jwt = false` (we validate JWTs in code, matching the project's other functions).
 
-- `supabase/functions/send-broadcast/index.ts` — switch to seed-job enqueue.
-- `supabase/functions/send-bulk-sms/index.ts` — same pattern.
-- `supabase/functions/deliver-batch/index.ts` — handle `enqueue_broadcast` and `enqueue_sms` job types with cursor paging.
-- `supabase/functions/dispatch-jobs/index.ts` — raise claim limit, bounded parallel dispatch.
-- `supabase/functions/bulk-subscribe/index.ts` — new, chunked RPC caller.
-- `supabase/config.toml` — register `bulk-subscribe` (verify_jwt default).
-- New migration: `bulk_subscribe_users` RPC, statement-level subscriber_count recompute, scale indexes, `total_recipients` → `bigint`.
-- Cron reschedule SQL (run via insert tool in default mode, since URLs/keys are project-specific).
-- `src/pages/BroadcastChannel.tsx` — "Bulk add subscribers" admin action + CSV upload.
-- `src/components/broadcast/BroadcastReceipts.tsx` + `src/components/sms/SMSHistory.tsx` — "Enqueueing…" state.
-- `mem://constraints/member-capacity-recommendations` + index update.
+## How to use
+
+1. Open any channel you own as super-admin.
+2. From DevTools or curl:
+   ```
+   await supabase.functions.invoke('load-test-broadcast', {
+     body: { channel_id: '<id>', count: 1000000, send_broadcast: true, content: 'Throughput test' }
+   })
+   ```
+3. Watch the message's `BroadcastReceipts` panel — `total_recipients` will tick up as the expander pages, and `Sending… X/Y` will rise as workers drain.
+4. When done, call again with `{ channel_id, count: 0, cleanup: true }` to remove the fakes.
 
 ## Out of scope
 
-- Replacing Web Push with a dedicated push service (FCM/APNs direct).
-- Per-recipient delivery receipts beyond the existing succeeded/failed counts.
-- Sharding `delivery_jobs` across multiple tables.
+- A UI panel for triggering the load test (curl / DevTools is sufficient for an admin tool).
+- Generating fake `push_subscriptions` (would require valid VAPID-encrypted endpoints; not useful for measuring our queue).

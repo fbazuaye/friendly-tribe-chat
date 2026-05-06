@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.bulk-subscribe]
 verify_jwt = false
+
+[functions.load-test-broadcast]
+verify_jwt = false
