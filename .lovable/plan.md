@@ -1,30 +1,27 @@
-## Goal
-Remove the 11 members the load test bulk-subscribed to the "Announcement" channel on 2026-05-06 at 03:30:13 UTC, leaving only the 4 originally subscribed members.
+## Problem
 
-## Approach
-Run a one-shot migration that deletes from `broadcast_subscribers` for that channel where `subscribed_at` is within the load test window, then refresh `subscriber_count`.
+Broadcasts get stuck at "delivery in progress" because the seed `delivery_jobs` row fails to insert. The DB CHECK constraint `delivery_jobs_job_type_check` only permits `'push'` and `'sms'`, but the new pipeline inserts `'enqueue_broadcast'` and `'enqueue_sms'` expander jobs. The error is logged but swallowed, so:
 
-```sql
-WITH del AS (
-  DELETE FROM public.broadcast_subscribers
-  WHERE channel_id = 'c662a50f-e66d-4dc9-a189-5287e34a0ac2'
-    AND subscribed_at >= '2026-05-06 03:30:00+00'
-    AND subscribed_at <  '2026-05-06 03:31:00+00'
-  RETURNING 1
-)
-SELECT COUNT(*) FROM del;
+- `broadcast_messages` row is created with `total_recipients = 0`
+- No `delivery_jobs` exist for it
+- `dispatch-jobs` cron has nothing to claim
+- `delivery_completed_at` never gets set → UI shows "delivery in progress" forever
+- The 1 token was already consumed
 
-UPDATE public.broadcast_channels
-SET subscriber_count = (
-  SELECT COUNT(*) FROM public.broadcast_subscribers WHERE channel_id = 'c662a50f-e66d-4dc9-a189-5287e34a0ac2'
-)
-WHERE id = 'c662a50f-e66d-4dc9-a189-5287e34a0ac2';
-```
+## Fix
 
-## Expected result
-- 11 rows deleted
-- Channel `subscriber_count` returns to 4 (livegigltd, baz_ent, usmaneve, de782e33…)
-- Anyone removed can re-subscribe normally from Discover Channels
+### 1. Migration: widen the CHECK constraint
+Drop and recreate `delivery_jobs_job_type_check` to allow all four current job types: `'push'`, `'sms'`, `'enqueue_broadcast'`, `'enqueue_sms'`.
 
-## Verification
-Re-run the audit query — `actual_subs = 4`, `fake_subs = 0`.
+### 2. Migration: heal the stuck broadcast(s)
+For any `broadcast_messages` row where `delivery_completed_at IS NULL` and no `delivery_jobs` exist for its `id`, mark `delivery_completed_at = now()` and `delivery_legacy = true` so the UI stops showing "in progress". (No retroactive push delivery — the message row exists and subscribers can still see it in-app; resending would double-charge tokens.)
+
+### 3. Make `send-broadcast` fail loudly
+If the seed `delivery_jobs` insert errors, refund the consumed token, delete the orphan `broadcast_messages` row, and return `500` with the DB error so the UI surfaces a real failure instead of silently appearing to succeed.
+
+### 4. Verify after deploy
+- Send a test broadcast from the Announcement channel.
+- Confirm one `enqueue_broadcast` job appears in `delivery_jobs`, dispatcher picks it up, `push` jobs are emitted, and `delivery_completed_at` is set.
+
+## Out of scope
+No changes to the dispatch cron, deliver-batch logic, or token costs.
