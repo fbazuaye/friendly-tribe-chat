@@ -5,7 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const CLAIM_LIMIT = 50;
+const CLAIM_LIMIT = 200;
+const PARALLEL = 25;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -35,8 +36,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fire-and-forget invocations of deliver-batch
-    for (const job of claimed) {
+    // Bounded parallel fan-out
+    const invoke = (job: any) =>
       fetch(`${supabaseUrl}/functions/v1/deliver-batch`, {
         method: "POST",
         headers: {
@@ -45,6 +46,9 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({ job_id: job.id }),
       }).catch((e) => console.error("dispatch fetch err:", e));
+
+    for (let i = 0; i < claimed.length; i += PARALLEL) {
+      await Promise.allSettled(claimed.slice(i, i + PARALLEL).map(invoke));
     }
 
     return new Response(JSON.stringify({ dispatched: claimed.length }), {
