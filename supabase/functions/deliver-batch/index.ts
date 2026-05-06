@@ -269,8 +269,18 @@ async function expandBroadcast(supabase: any, job: any) {
   if (error) throw error;
   const rows = subs || [];
   if (rows.length === 0) {
-    // Nothing more — mark message complete if no push jobs were ever created
-    await supabase.rpc("check_and_complete_broadcast", { _message_id: job.parent_id }).catch(() => {});
+    // No (more) recipients. If no push jobs exist for this message, mark complete.
+    const { count } = await supabase
+      .from("delivery_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("parent_id", job.parent_id)
+      .eq("job_type", "push");
+    if (!count) {
+      await supabase
+        .from("broadcast_messages")
+        .update({ delivery_completed_at: new Date().toISOString() })
+        .eq("id", job.parent_id);
+    }
     return { enqueued: 0, done: true };
   }
 
