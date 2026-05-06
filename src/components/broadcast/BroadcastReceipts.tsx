@@ -260,23 +260,41 @@ function DeliveryBreakdown({
   stats,
   recipients,
   pending,
+  progress,
 }: {
   stats: Stats;
   recipients: number;
   pending: boolean;
+  progress: Progress | null;
 }) {
-  const delivered = stats.push_sent_count;
-  const failed = stats.push_failed_count;
+  const delivered = pending && progress ? progress.recipients_sent : stats.push_sent_count;
+  const failed = pending && progress ? progress.recipients_failed : stats.push_failed_count;
   const accountedFor = delivered + failed;
   const remaining = Math.max(0, recipients - accountedFor);
-  // While fan-out is in progress, "remaining" = pending; after completion, it = no-device subscribers
   const pendingCount = pending ? remaining : 0;
   const noDeviceCount = pending ? 0 : remaining;
 
   const pct = (n: number) => (recipients > 0 ? (n / recipients) * 100 : 0);
 
+  const jobsDone = progress ? progress.succeeded + progress.failed + progress.dead : 0;
+  const jobsTotal = progress?.total_jobs ?? 0;
+  const jobPct = jobsTotal > 0 ? (jobsDone / jobsTotal) * 100 : 0;
+
   return (
     <div className="mt-4 space-y-4">
+      {pending && progress && jobsTotal > 0 && (
+        <div className="p-3 rounded-xl bg-secondary/40 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Worker batches processed</span>
+            <span className="tabular-nums font-medium">
+              {jobsDone.toLocaleString()}/{jobsTotal.toLocaleString()} ({Math.round(jobPct)}%)
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+            <div className="h-full bg-primary transition-all" style={{ width: `${jobPct}%` }} />
+          </div>
+        </div>
+      )}
       {/* Stacked progress bar */}
       <div>
         <div className="flex h-3 w-full overflow-hidden rounded-full bg-secondary/60">
