@@ -1,43 +1,34 @@
-## Why the report looks wrong
+## Problem
 
-**Row 1 (Completed · 0 delivered · 4 failed · 3 recipients · 1 read):**
-- `push_sent_count` and `push_failed_count` are tallied **per push device**, but "Recipients" counts **unique users**. Three users with multiple devices each can produce 4 failed push attempts. That's why "Failed" exceeds "Recipients".
-- "Delivered = 0" with "1 read" is technically correct: every push endpoint rejected the notification, but the user opened the message in-app. The label "Delivered" makes it look broken.
+The "Enable" button in the bottom notification prompt appears unresponsive when clicked. Root causes:
 
-**Rows 2 & 3 ("In progress" with reads):**
-- These broadcasts pre-date the delivery-tracking columns (`push_sent_count`, `delivery_completed_at`). Their counters are 0 / null forever, so the report shows them stuck "In progress" even though they were delivered days ago.
+1. **Silently denied permission**: `Notification.requestPermission()` only shows the browser dialog when permission is `"default"`. If it was previously denied (or the browser blocked it for the site/iframe), the call resolves instantly with `"denied"` and nothing visible happens — looking like a broken button.
+2. **No user feedback**: The handler returns silently on failure or denial — no toast, no UI change.
+3. **Iframe/preview limitation**: The Lovable preview runs inside an iframe. Browsers (especially Chrome) block `Notification.requestPermission()` inside cross-origin iframes unless the parent grants `notifications` permissions policy. In the in-app preview the prompt simply never appears. The published URL (`friendly-tribe-chat.lovable.app`) opened in a top-level tab works fine.
+4. **Unauthenticated state**: The prompt shows on `/auth` before sign-in. Even if permission is granted, `subscribeToPush` skips saving because `user.id` is missing, so the user has to repeat the flow after login.
 
 ## Fix
 
-### 1. Backfill legacy broadcasts (migration)
-- Add `delivery_legacy boolean default false` to `broadcast_messages`.
-- For rows where `delivery_completed_at` is null and `created_at < now() - interval '1 hour'`:
-  - Set `delivery_completed_at = created_at`
-  - Set `delivery_legacy = true`
-  - Backfill `total_recipients` from current subscriber count (minus owner) when null/0
-- Update `get_channel_broadcast_report` and `get_broadcast_message_stats` RPCs to return `delivery_legacy`.
+### 1. `src/hooks/usePushNotifications.tsx`
+- Make `requestPermission` detect the `"denied"` case and return a structured result: `{ granted: boolean; reason?: 'denied' | 'unsupported' | 'blocked' | 'error' }`.
+- Wrap `Notification.requestPermission()` in a try/catch that also catches the `NotImplementedError` / `SecurityError` thrown inside iframes; surface as `reason: 'blocked'`.
+- After permission is granted, also re-check `subscription.enabled` so the auto-subscribe `useEffect` fires once the user logs in.
 
-### 2. Count per-user, not per-device (edge functions)
-- **`send-push-notification`**: group push subscriptions by `user_id`. A user is:
-  - **delivered** — at least one device accepted the push
-  - **failed** — they had devices but all rejected
-  - **no device** — no push subscription at all
-  Return `{ users_delivered, users_failed, users_no_device, devices_attempted }`.
-- **`send-broadcast`**: write `users_delivered` into `push_sent_count` and `users_failed` into `push_failed_count`. Guarantees `delivered + failed + no_device ≤ total_recipients`.
+### 2. `src/components/notifications/NotificationPrompt.tsx`
+- On click, await the new structured result and show a toast (sonner) for each branch:
+  - `granted` → success toast "Notifications enabled".
+  - `denied` → warning toast with instructions: "Notifications are blocked. Enable them in your browser's site settings, then reload."
+  - `blocked` → info toast: "Open the app in a new browser tab to enable notifications (the in-app preview blocks them)." plus a button that opens `window.location.href` in `_blank`.
+  - `unsupported` → info toast: "Your browser doesn't support push notifications."
+- Hide the prompt only when granted; for denied/blocked also persist dismissal so it doesn't keep nagging.
+- Don't render the prompt on `/auth`, `/`, or `/join-organization` routes — wait until the user is signed in and inside the app, so subscription persistence works on the first try.
+- Add `disabled` state on the Enable button while the request is in-flight to prevent multi-click confusion.
 
-### 3. Clarify labels (frontend + exports)
-- Rename **"Delivered"** → **"Push delivered"** in:
-  - `src/components/broadcast/BroadcastReceipts.tsx` (sheet + breakdown bar)
-  - `src/lib/broadcastExport.ts` (CSV headers, PDF tables)
-- Add a one-line note under the PDF/CSV channel report header:
-  *"Push delivered = recipient devices that accepted the push. Reads = recipients who opened the message in-app. Reads can occur without a push delivery."*
-- For rows with `delivery_legacy = true`, render status as **"Delivered (legacy)"** instead of a timestamp, so users know tracking wasn't available for those messages.
+### 3. (Optional safety) `src/hooks/usePushNotifications.tsx`
+- After `Notification.requestPermission` resolves, also call `subscribeToPush` directly (instead of relying solely on the effect) so a successful click immediately registers the subscription even if the component unmounts.
 
-### 4. Files touched
-- New migration: `broadcast_messages` column + backfill + updated RPCs
-- `supabase/functions/send-push-notification/index.ts`
-- `supabase/functions/send-broadcast/index.ts`
-- `src/lib/broadcastExport.ts`
-- `src/components/broadcast/BroadcastReceipts.tsx`
+## Files touched
+- `src/hooks/usePushNotifications.tsx`
+- `src/components/notifications/NotificationPrompt.tsx`
 
-No new token cost, no UI restructuring — just accurate numbers and clearer labels.
+No DB or edge function changes. No new dependencies.

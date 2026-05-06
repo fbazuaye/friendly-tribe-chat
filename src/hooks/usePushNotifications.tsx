@@ -131,8 +131,16 @@ export function usePushNotifications(totalUnreadCount?: number) {
     }
   }, [subscription.enabled, user?.id, subscribeToPush]);
 
-  const requestPermission = useCallback(async () => {
-    if (!subscription.supported) return false;
+  const requestPermission = useCallback(async (): Promise<{
+    granted: boolean;
+    reason?: "denied" | "unsupported" | "blocked" | "error";
+  }> => {
+    if (!subscription.supported) return { granted: false, reason: "unsupported" };
+
+    // Already denied — browser won't prompt again
+    if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+      return { granted: false, reason: "denied" };
+    }
 
     try {
       const permission = await Notification.requestPermission();
@@ -143,12 +151,18 @@ export function usePushNotifications(totalUnreadCount?: number) {
           enabled: permission === "granted",
         }));
       }
-      return permission === "granted";
+      if (permission === "granted") {
+        // Subscribe immediately rather than waiting for the effect
+        try { await subscribeToPush(); } catch { /* ignore */ }
+        return { granted: true };
+      }
+      return { granted: false, reason: permission === "denied" ? "denied" : "error" };
     } catch (error) {
       console.error("Error requesting notification permission:", error);
-      return false;
+      // Iframes often throw SecurityError / NotAllowedError
+      return { granted: false, reason: "blocked" };
     }
-  }, [subscription.supported]);
+  }, [subscription.supported, subscribeToPush]);
 
   const showNotification = useCallback(
     (title: string, options?: NotificationOptions) => {

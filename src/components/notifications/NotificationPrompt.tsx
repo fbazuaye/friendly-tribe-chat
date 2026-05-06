@@ -1,23 +1,28 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Bell, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+
+const HIDDEN_ROUTES = ["/", "/auth", "/join-organization"];
 
 export function NotificationPrompt() {
   const { supported, permission, requestPermission } = usePushNotifications();
+  const { user } = useAuth();
+  const location = useLocation();
   const [dismissed, setDismissed] = useState(false);
   const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Check if user has dismissed the prompt before
     const wasDismissed = localStorage.getItem("notification-prompt-dismissed");
     if (wasDismissed) {
       setDismissed(true);
       return;
     }
-
-    // Show after a short delay if notifications not granted
     if (supported && permission !== "granted") {
       const timer = setTimeout(() => setShow(true), 3000);
       return () => clearTimeout(timer);
@@ -25,9 +30,39 @@ export function NotificationPrompt() {
   }, [supported, permission]);
 
   const handleEnable = async () => {
-    const granted = await requestPermission();
-    if (granted) {
-      setShow(false);
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await requestPermission();
+      if (result.granted) {
+        toast.success("Notifications enabled");
+        setShow(false);
+      } else if (result.reason === "denied") {
+        toast.error(
+          "Notifications are blocked. Enable them in your browser's site settings, then reload."
+        );
+        localStorage.setItem("notification-prompt-dismissed", "true");
+        setDismissed(true);
+        setShow(false);
+      } else if (result.reason === "blocked") {
+        toast.message("Open in a new tab to enable notifications", {
+          description:
+            "The in-app preview blocks permission prompts. Open the published app in a browser tab.",
+          action: {
+            label: "Open",
+            onClick: () => window.open(window.location.href, "_blank"),
+          },
+        });
+      } else if (result.reason === "unsupported") {
+        toast.error("Your browser doesn't support push notifications.");
+        localStorage.setItem("notification-prompt-dismissed", "true");
+        setDismissed(true);
+        setShow(false);
+      } else {
+        toast.error("Could not enable notifications. Please try again.");
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -37,7 +72,14 @@ export function NotificationPrompt() {
     setShow(false);
   };
 
-  if (!show || dismissed || !supported || permission === "granted") {
+  if (
+    !show ||
+    dismissed ||
+    !supported ||
+    permission === "granted" ||
+    !user ||
+    HIDDEN_ROUTES.includes(location.pathname)
+  ) {
     return null;
   }
 
@@ -66,8 +108,8 @@ export function NotificationPrompt() {
             the background.
           </p>
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleEnable}>
-              Enable
+            <Button size="sm" onClick={handleEnable} disabled={busy}>
+              {busy ? "Enabling..." : "Enable"}
             </Button>
             <Button size="sm" variant="ghost" onClick={handleDismiss}>
               Not now
