@@ -136,19 +136,21 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
           className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-primary-foreground/70 hover:text-primary-foreground transition-colors"
           title="Tap for delivery details"
         >
-          <span className="inline-flex items-center gap-0.5">
+          <span className="inline-flex items-center gap-0.5 tabular-nums">
             <Check className="w-3 h-3" />
-            {pending ? `Sending… ${recipients}` : `${stats.push_sent_count + stats.push_failed_count}/${recipients}`}
+            {pending
+              ? `Sending… ${(progress ? progress.recipients_sent + progress.recipients_failed : stats.push_sent_count + stats.push_failed_count).toLocaleString()}/${recipients.toLocaleString()}`
+              : `${(stats.push_sent_count + stats.push_failed_count).toLocaleString()}/${recipients.toLocaleString()}`}
           </span>
           <span aria-hidden>·</span>
-          <span className="inline-flex items-center gap-0.5">
+          <span className="inline-flex items-center gap-0.5 tabular-nums">
             <Bell className="w-3 h-3" />
-            {stats.push_sent_count}
+            {(progress ? progress.recipients_sent : stats.push_sent_count).toLocaleString()}
           </span>
           <span aria-hidden>·</span>
-          <span className="inline-flex items-center gap-0.5">
+          <span className="inline-flex items-center gap-0.5 tabular-nums">
             <Eye className="w-3 h-3" />
-            {stats.read_count}
+            {stats.read_count.toLocaleString()}
           </span>
         </button>
       </SheetTrigger>
@@ -156,7 +158,7 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
         <SheetHeader>
           <SheetTitle>Broadcast delivery</SheetTitle>
         </SheetHeader>
-        <DeliveryBreakdown stats={stats} recipients={recipients} pending={pending} />
+        <DeliveryBreakdown stats={stats} recipients={recipients} pending={pending} progress={progress} />
         <ExportButtons
           messageId={messageId}
           channelName={channelName ?? "Broadcast"}
