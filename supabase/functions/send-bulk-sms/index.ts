@@ -107,21 +107,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Enqueue SMS delivery jobs in batches of 50
-    const SMS_BATCH = 50;
-    const batches: string[][] = [];
-    for (let i = 0; i < phoneNumbers.length; i += SMS_BATCH) {
-      batches.push(phoneNumbers.slice(i, i + SMS_BATCH));
-    }
-    const jobs = batches.map((batch) => ({
-      job_type: "sms",
+    // Seed a single expander job. deliver-batch will chunk and emit sms jobs.
+    // For very large lists (>10k), the caller should pass an empty phoneNumbers and use cursor mode in the future.
+    const { error: seedErr } = await supabase.from("delivery_jobs").insert({
+      job_type: "enqueue_sms",
       parent_id: smsLog.id,
       organization_id: orgId,
-      phone_numbers: batch,
-      payload: { message },
-    }));
-    for (let i = 0; i < jobs.length; i += 500) {
-      await supabase.from("delivery_jobs").insert(jobs.slice(i, i + 500));
+      payload: {
+        message,
+        phone_numbers: phoneNumbers,
+        offset: 0,
+        page_size: 5000,
+        batch_size: 50,
+      },
+    });
+    if (seedErr) {
+      console.error("seed enqueue_sms error:", seedErr);
     }
 
     return new Response(
@@ -129,7 +130,6 @@ Deno.serve(async (req) => {
         success: true,
         sms_log_id: smsLog.id,
         recipientCount: phoneNumbers.length,
-        job_count: batches.length,
         status: "queued",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -99,16 +99,7 @@ Deno.serve(async (req) => {
       metadata: { channel_id, message_type },
     });
 
-    // Fetch subscribers (excluding owner)
-    const { data: subs } = await supabaseAdmin
-      .from("broadcast_subscribers")
-      .select("user_id")
-      .eq("channel_id", channel_id)
-      .neq("user_id", userId);
-
-    const recipientIds = (subs || []).map((s: any) => s.user_id);
-
-    // Insert broadcast message
+    // Insert broadcast message with total_recipients=0; expander will increment.
     const { data: message, error: messageError } = await supabaseAdmin
       .from("broadcast_messages")
       .insert({
@@ -116,7 +107,7 @@ Deno.serve(async (req) => {
         sender_id: userId,
         content,
         message_type,
-        total_recipients: recipientIds.length,
+        total_recipients: 0,
       })
       .select()
       .single();
@@ -127,32 +118,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Enqueue delivery jobs in batches
-    const batches = chunk(recipientIds, RECIPIENT_BATCH_SIZE);
-    if (batches.length > 0) {
-      const jobs = batches.map((batch) => ({
-        job_type: "push",
-        parent_id: message.id,
-        organization_id: channel.organization_id,
-        recipient_user_ids: batch,
-        payload: {
+    // Seed a single expander job. deliver-batch will page subscribers and emit push jobs.
+    const { error: seedErr } = await supabaseAdmin.from("delivery_jobs").insert({
+      job_type: "enqueue_broadcast",
+      parent_id: message.id,
+      organization_id: channel.organization_id,
+      payload: {
+        channel_id,
+        owner_id: userId,
+        cursor: null,
+        page_size: 5000,
+        batch_size: RECIPIENT_BATCH_SIZE,
+        notification: {
           title: channel.name || "Broadcast",
           body: String(content).slice(0, 100),
           url: `/broadcasts/${channel_id}`,
           tag: `broadcast-${channel_id}`,
         },
-      }));
-      // Insert in chunks of 500 jobs to avoid payload limits
-      for (const jobChunk of chunk(jobs, 500)) {
-        const { error: jobErr } = await supabaseAdmin.from("delivery_jobs").insert(jobChunk);
-        if (jobErr) console.error("delivery_jobs insert error:", jobErr);
-      }
-    } else {
-      // No recipients — mark complete immediately
-      await supabaseAdmin
-        .from("broadcast_messages")
-        .update({ delivery_completed_at: new Date().toISOString() })
-        .eq("id", message.id);
+      },
+    });
+    if (seedErr) {
+      console.error("seed enqueue_broadcast error:", seedErr);
     }
 
     return new Response(JSON.stringify({
@@ -160,8 +146,7 @@ Deno.serve(async (req) => {
       message_id: message.id,
       tokens_consumed: BROADCAST_TOKEN_COST,
       new_balance: newBalance,
-      job_count: batches.length,
-      total_recipients: recipientIds.length,
+      status: "queued",
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("send-broadcast error:", error);

@@ -135,6 +135,22 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    } else if (job.job_type === "enqueue_broadcast") {
+      const result = await expandBroadcast(supabase, job);
+      await supabase.rpc("complete_delivery_job", {
+        _job_id: job.id, _success: true, _sent: 0, _failed: 0, _error: null,
+      });
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } else if (job.job_type === "enqueue_sms") {
+      const result = await expandSms(supabase, job);
+      await supabase.rpc("complete_delivery_job", {
+        _job_id: job.id, _success: true, _sent: 0, _failed: 0, _error: null,
+      });
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
     throw new Error(`unknown job_type ${job.job_type}`);
   } catch (err) {
