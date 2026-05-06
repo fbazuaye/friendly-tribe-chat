@@ -139,6 +139,26 @@ Deno.serve(async (req) => {
     });
     if (seedErr) {
       console.error("seed enqueue_broadcast error:", seedErr);
+      // Refund token and remove orphan message so the UI surfaces a real failure
+      await supabaseAdmin.from("broadcast_messages").delete().eq("id", message.id);
+      await supabaseAdmin
+        .from("user_token_allocations")
+        .update({ current_balance: allocation.current_balance, updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("organization_id", channel.organization_id);
+      await supabaseAdmin.from("token_transactions").insert({
+        user_id: userId,
+        organization_id: channel.organization_id,
+        transaction_type: "refund",
+        action_type: "broadcast",
+        amount: BROADCAST_TOKEN_COST,
+        balance_before: newBalance,
+        balance_after: allocation.current_balance,
+        metadata: { channel_id, reason: "seed_job_failed", error: seedErr.message },
+      });
+      return new Response(JSON.stringify({ error: `Failed to queue broadcast: ${seedErr.message}` }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify({
