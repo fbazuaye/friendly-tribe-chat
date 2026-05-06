@@ -912,6 +912,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cleanup_fake_subscribers: {
+        Args: { _channel_id: string; _limit?: number }
+        Returns: number
+      }
       complete_delivery_job: {
         Args: {
           _error: string

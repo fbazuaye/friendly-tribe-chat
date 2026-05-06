@@ -66,51 +66,22 @@ Deno.serve(async (req) => {
     const result: Record<string, unknown> = { channel_id, requested: count };
     const t0 = Date.now();
 
-    // 1. Cleanup: delete subscribers on this channel whose user_id has no profile in the org
+    // 1. Cleanup: delete fake subscribers in batches via RPC (avoids statement timeouts)
     if (cleanup) {
-      // Get all valid profile IDs for the org (cheap; org membership is bounded)
-      const validIds = new Set<string>();
-      let from = 0;
-      while (true) {
-        const { data, error } = await admin
-          .from("profiles")
-          .select("id")
-          .eq("organization_id", channel.organization_id)
-          .range(from, from + 999);
-        if (error) throw error;
-        for (const r of data || []) validIds.add(r.id);
-        if (!data || data.length < 1000) break;
-        from += 1000;
-      }
-
-      // Page through subscribers and delete fakes in chunks
       let deleted = 0;
-      let cursor: string | null = null;
-      while (true) {
-        let q = admin
-          .from("broadcast_subscribers")
-          .select("id, user_id")
-          .eq("channel_id", channel_id)
-          .order("id", { ascending: true })
-          .limit(5000);
-        if (cursor) q = q.gt("id", cursor);
-        const { data, error } = await q;
+      const BATCH = 5000;
+      const MAX_BATCHES = 400; // up to 2M rows per call
+      for (let i = 0; i < MAX_BATCHES; i++) {
+        const { data, error } = await userClient.rpc("cleanup_fake_subscribers", {
+          _channel_id: channel_id,
+          _limit: BATCH,
+        });
         if (error) throw error;
-        if (!data || data.length === 0) break;
-        const fakeIds = data.filter((r: any) => !validIds.has(r.user_id)).map((r: any) => r.id);
-        if (fakeIds.length > 0) {
-          const { error: dErr } = await admin
-            .from("broadcast_subscribers")
-            .delete()
-            .in("id", fakeIds);
-          if (dErr) throw dErr;
-          deleted += fakeIds.length;
-        }
-        if (data.length < 5000) break;
-        cursor = data[data.length - 1].id;
+        const n = Number(data || 0);
+        deleted += n;
+        if (n < BATCH) break;
       }
 
-      // Recompute subscriber_count
       const { count: total } = await admin
         .from("broadcast_subscribers")
         .select("id", { count: "exact", head: true })
