@@ -23,8 +23,20 @@ interface Props {
   messageCreatedAt?: string;
 }
 
+type Progress = {
+  total_jobs: number;
+  pending: number;
+  claimed: number;
+  succeeded: number;
+  failed: number;
+  dead: number;
+  recipients_sent: number;
+  recipients_failed: number;
+};
+
 export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, channelName, messageContent, messageCreatedAt }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -47,12 +59,39 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
     setLoading(false);
   };
 
+  const loadProgress = async () => {
+    const { data, error } = await (supabase.rpc as any)("get_delivery_progress", {
+      _parent_id: messageId,
+    });
+    if (!error && data) {
+      const row: any = Array.isArray(data) ? data[0] : data;
+      if (row) {
+        setProgress({
+          total_jobs: Number(row.total_jobs ?? 0),
+          pending: Number(row.pending ?? 0),
+          claimed: Number(row.claimed ?? 0),
+          succeeded: Number(row.succeeded ?? 0),
+          failed: Number(row.failed ?? 0),
+          dead: Number(row.dead ?? 0),
+          recipients_sent: Number(row.recipients_sent ?? 0),
+          recipients_failed: Number(row.recipients_failed ?? 0),
+        });
+      }
+    }
+  };
+
+  const pendingDelivery = !stats?.delivery_completed_at;
+
   useEffect(() => {
     load();
-    const interval = setInterval(load, 30000);
+    loadProgress();
+    const interval = setInterval(() => {
+      load();
+      if (pendingDelivery) loadProgress();
+    }, pendingDelivery ? 3000 : 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, deliveryCompletedAt]);
+  }, [messageId, deliveryCompletedAt, pendingDelivery]);
 
   // Realtime: refresh when this message row updates
   useEffect(() => {
@@ -66,7 +105,7 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
           table: "broadcast_messages",
           filter: `id=eq.${messageId}`,
         },
-        () => load()
+        () => { load(); loadProgress(); }
       )
       .subscribe();
     return () => {
