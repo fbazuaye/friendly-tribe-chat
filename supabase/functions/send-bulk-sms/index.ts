@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Log the SMS send attempt
+    // Create SMS log (queued)
     const { data: smsLog, error: logError } = await supabase
       .from("sms_logs")
       .insert({
@@ -95,70 +95,42 @@ Deno.serve(async (req) => {
         sent_by: userId,
         message,
         recipient_count: phoneNumbers.length,
-        status: "sending",
+        status: "queued",
       })
       .select()
       .single();
 
-    if (logError) {
+    if (logError || !smsLog) {
       console.error("Error creating SMS log:", logError);
+      return new Response(JSON.stringify({ error: "Failed to create SMS log" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Send via Africa's Talking
-    const atUsername = Deno.env.get("AFRICASTALKING_USERNAME") || "Sandbox";
-    const isSandbox = atUsername === "Sandbox";
-    const apiUrl = isSandbox
-      ? "https://api.sandbox.africastalking.com/version1/messaging"
-      : "https://api.africastalking.com/version1/messaging";
-    const recipients = phoneNumbers.join(",");
-
-    console.log(`Sending bulk SMS to ${phoneNumbers.length} recipients via Africa's Talking (${isSandbox ? 'sandbox' : 'production'}), username="${atUsername}", apiKey starts with "${atApiKey.substring(0, 8)}..."`);
-
-    const formData = new URLSearchParams();
-    formData.append("username", atUsername);
-    formData.append("to", recipients);
-    formData.append("message", message);
-
-    const atResponse = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "apiKey": atApiKey,
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-      },
-      body: formData.toString(),
-    });
-
-    const responseText = await atResponse.text();
-    let atResult;
-    try {
-      atResult = JSON.parse(responseText);
-    } catch {
-      console.error("Non-JSON response from AT:", responseText);
-      throw new Error(`Africa's Talking returned non-JSON: ${responseText}`);
+    // Enqueue SMS delivery jobs in batches of 50
+    const SMS_BATCH = 50;
+    const batches: string[][] = [];
+    for (let i = 0; i < phoneNumbers.length; i += SMS_BATCH) {
+      batches.push(phoneNumbers.slice(i, i + SMS_BATCH));
     }
-    console.log("Africa's Talking response:", JSON.stringify(atResult));
-
-    // Update log with result
-    if (smsLog) {
-      await supabase
-        .from("sms_logs")
-        .update({
-          status: atResponse.ok ? "sent" : "failed",
-          response_data: atResult,
-        })
-        .eq("id", smsLog.id);
-    }
-
-    if (!atResponse.ok) {
-      throw new Error(`Africa's Talking API error [${atResponse.status}]: ${JSON.stringify(atResult)}`);
+    const jobs = batches.map((batch) => ({
+      job_type: "sms",
+      parent_id: smsLog.id,
+      organization_id: orgId,
+      phone_numbers: batch,
+      payload: { message },
+    }));
+    for (let i = 0; i < jobs.length; i += 500) {
+      await supabase.from("delivery_jobs").insert(jobs.slice(i, i + 500));
     }
 
     return new Response(
       JSON.stringify({
         success: true,
+        sms_log_id: smsLog.id,
         recipientCount: phoneNumbers.length,
-        result: atResult,
+        job_count: batches.length,
+        status: "queued",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

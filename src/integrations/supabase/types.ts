@@ -321,6 +321,69 @@ export type Database = {
           },
         ]
       }
+      delivery_jobs: {
+        Row: {
+          attempts: number
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          failed_count: number
+          id: string
+          job_type: string
+          last_error: string | null
+          max_attempts: number
+          next_attempt_at: string
+          organization_id: string
+          parent_id: string
+          payload: Json
+          phone_numbers: string[] | null
+          recipient_user_ids: string[] | null
+          status: string
+          succeeded_count: number
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          failed_count?: number
+          id?: string
+          job_type: string
+          last_error?: string | null
+          max_attempts?: number
+          next_attempt_at?: string
+          organization_id: string
+          parent_id: string
+          payload?: Json
+          phone_numbers?: string[] | null
+          recipient_user_ids?: string[] | null
+          status?: string
+          succeeded_count?: number
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          failed_count?: number
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          max_attempts?: number
+          next_attempt_at?: string
+          organization_id?: string
+          parent_id?: string
+          payload?: Json
+          phone_numbers?: string[] | null
+          recipient_user_ids?: string[] | null
+          status?: string
+          succeeded_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
@@ -816,6 +879,45 @@ export type Database = {
         Args: { _org_id: string; _required: number; _user_id: string }
         Returns: boolean
       }
+      claim_delivery_jobs: {
+        Args: { _limit: number; _worker_id: string }
+        Returns: {
+          attempts: number
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          failed_count: number
+          id: string
+          job_type: string
+          last_error: string | null
+          max_attempts: number
+          next_attempt_at: string
+          organization_id: string
+          parent_id: string
+          payload: Json
+          phone_numbers: string[] | null
+          recipient_user_ids: string[] | null
+          status: string
+          succeeded_count: number
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "delivery_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      complete_delivery_job: {
+        Args: {
+          _error: string
+          _failed: number
+          _job_id: string
+          _sent: number
+          _success: boolean
+        }
+        Returns: undefined
+      }
       get_broadcast_audience_stats: {
         Args: { _channel_id: string }
         Returns: {
@@ -856,6 +958,19 @@ export type Database = {
           push_sent_count: number
           read_count: number
           total_recipients: number
+        }[]
+      }
+      get_delivery_progress: {
+        Args: { _parent_id: string }
+        Returns: {
+          claimed: number
+          dead: number
+          failed: number
+          pending: number
+          recipients_failed: number
+          recipients_sent: number
+          succeeded: number
+          total_jobs: number
         }[]
       }
       get_org_users_paginated: {
