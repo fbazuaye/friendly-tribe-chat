@@ -23,8 +23,20 @@ interface Props {
   messageCreatedAt?: string;
 }
 
+type Progress = {
+  total_jobs: number;
+  pending: number;
+  claimed: number;
+  succeeded: number;
+  failed: number;
+  dead: number;
+  recipients_sent: number;
+  recipients_failed: number;
+};
+
 export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, channelName, messageContent, messageCreatedAt }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -47,12 +59,39 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
     setLoading(false);
   };
 
+  const loadProgress = async () => {
+    const { data, error } = await (supabase.rpc as any)("get_delivery_progress", {
+      _parent_id: messageId,
+    });
+    if (!error && data) {
+      const row: any = Array.isArray(data) ? data[0] : data;
+      if (row) {
+        setProgress({
+          total_jobs: Number(row.total_jobs ?? 0),
+          pending: Number(row.pending ?? 0),
+          claimed: Number(row.claimed ?? 0),
+          succeeded: Number(row.succeeded ?? 0),
+          failed: Number(row.failed ?? 0),
+          dead: Number(row.dead ?? 0),
+          recipients_sent: Number(row.recipients_sent ?? 0),
+          recipients_failed: Number(row.recipients_failed ?? 0),
+        });
+      }
+    }
+  };
+
+  const pendingDelivery = !stats?.delivery_completed_at;
+
   useEffect(() => {
     load();
-    const interval = setInterval(load, 30000);
+    loadProgress();
+    const interval = setInterval(() => {
+      load();
+      if (pendingDelivery) loadProgress();
+    }, pendingDelivery ? 3000 : 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, deliveryCompletedAt]);
+  }, [messageId, deliveryCompletedAt, pendingDelivery]);
 
   // Realtime: refresh when this message row updates
   useEffect(() => {
@@ -66,7 +105,7 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
           table: "broadcast_messages",
           filter: `id=eq.${messageId}`,
         },
-        () => load()
+        () => { load(); loadProgress(); }
       )
       .subscribe();
     return () => {
@@ -97,19 +136,21 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
           className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-primary-foreground/70 hover:text-primary-foreground transition-colors"
           title="Tap for delivery details"
         >
-          <span className="inline-flex items-center gap-0.5">
+          <span className="inline-flex items-center gap-0.5 tabular-nums">
             <Check className="w-3 h-3" />
-            {pending ? `Sending… ${recipients}` : `${stats.push_sent_count + stats.push_failed_count}/${recipients}`}
+            {pending
+              ? `Sending… ${(progress ? progress.recipients_sent + progress.recipients_failed : stats.push_sent_count + stats.push_failed_count).toLocaleString()}/${recipients.toLocaleString()}`
+              : `${(stats.push_sent_count + stats.push_failed_count).toLocaleString()}/${recipients.toLocaleString()}`}
           </span>
           <span aria-hidden>·</span>
-          <span className="inline-flex items-center gap-0.5">
+          <span className="inline-flex items-center gap-0.5 tabular-nums">
             <Bell className="w-3 h-3" />
-            {stats.push_sent_count}
+            {(progress ? progress.recipients_sent : stats.push_sent_count).toLocaleString()}
           </span>
           <span aria-hidden>·</span>
-          <span className="inline-flex items-center gap-0.5">
+          <span className="inline-flex items-center gap-0.5 tabular-nums">
             <Eye className="w-3 h-3" />
-            {stats.read_count}
+            {stats.read_count.toLocaleString()}
           </span>
         </button>
       </SheetTrigger>
@@ -117,7 +158,7 @@ export function BroadcastReceipts({ messageId, channelId, deliveryCompletedAt, c
         <SheetHeader>
           <SheetTitle>Broadcast delivery</SheetTitle>
         </SheetHeader>
-        <DeliveryBreakdown stats={stats} recipients={recipients} pending={pending} />
+        <DeliveryBreakdown stats={stats} recipients={recipients} pending={pending} progress={progress} />
         <ExportButtons
           messageId={messageId}
           channelName={channelName ?? "Broadcast"}
@@ -219,23 +260,41 @@ function DeliveryBreakdown({
   stats,
   recipients,
   pending,
+  progress,
 }: {
   stats: Stats;
   recipients: number;
   pending: boolean;
+  progress: Progress | null;
 }) {
-  const delivered = stats.push_sent_count;
-  const failed = stats.push_failed_count;
+  const delivered = pending && progress ? progress.recipients_sent : stats.push_sent_count;
+  const failed = pending && progress ? progress.recipients_failed : stats.push_failed_count;
   const accountedFor = delivered + failed;
   const remaining = Math.max(0, recipients - accountedFor);
-  // While fan-out is in progress, "remaining" = pending; after completion, it = no-device subscribers
   const pendingCount = pending ? remaining : 0;
   const noDeviceCount = pending ? 0 : remaining;
 
   const pct = (n: number) => (recipients > 0 ? (n / recipients) * 100 : 0);
 
+  const jobsDone = progress ? progress.succeeded + progress.failed + progress.dead : 0;
+  const jobsTotal = progress?.total_jobs ?? 0;
+  const jobPct = jobsTotal > 0 ? (jobsDone / jobsTotal) * 100 : 0;
+
   return (
     <div className="mt-4 space-y-4">
+      {pending && progress && jobsTotal > 0 && (
+        <div className="p-3 rounded-xl bg-secondary/40 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Worker batches processed</span>
+            <span className="tabular-nums font-medium">
+              {jobsDone.toLocaleString()}/{jobsTotal.toLocaleString()} ({Math.round(jobPct)}%)
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+            <div className="h-full bg-primary transition-all" style={{ width: `${jobPct}%` }} />
+          </div>
+        </div>
+      )}
       {/* Stacked progress bar */}
       <div>
         <div className="flex h-3 w-full overflow-hidden rounded-full bg-secondary/60">
