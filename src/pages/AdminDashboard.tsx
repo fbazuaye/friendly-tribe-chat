@@ -10,6 +10,7 @@ import { TransactionHistory } from "@/components/admin/TransactionHistory";
 import { PurchaseTokensDialog } from "@/components/admin/PurchaseTokensDialog";
 import { InviteCodeManager } from "@/components/admin/InviteCodeManager";
 import { BroadcastAnalytics } from "@/components/admin/BroadcastAnalytics";
+import { LoadTestPanel } from "@/components/admin/LoadTestPanel";
 import { GeoAnalytics } from "@/components/admin/GeoAnalytics";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuth } from "@/hooks/useAuth";
@@ -141,6 +142,7 @@ export default function AdminDashboard() {
           {isSuperAdmin && (
             <TabsContent value="settings" className="mt-6 space-y-6">
               <InviteCodeManager />
+              <LoadTestPanel />
             </TabsContent>
           )}
         </Tabs>
