@@ -1,51 +1,30 @@
-## Problem
+## Goal
+Remove the 11 members the load test bulk-subscribed to the "Announcement" channel on 2026-05-06 at 03:30:13 UTC, leaving only the 4 originally subscribed members.
 
-After scaling `broadcast_messages.total_recipients` to `bigint` (for 1M-member channels), the read-side RPCs were not updated. They still declare `total_recipients integer` in their `RETURNS TABLE(...)`, so Postgres aborts every call with:
-
-```
-ERROR: structure of query does not match function result type
-```
-
-This breaks:
-- The Broadcast Delivery Receipts sheet (`get_broadcast_message_stats`)
-- The channel CSV / PDF download menu (`get_channel_broadcast_report`)
-
-## Fix
-
-One small migration that recreates the two functions with `total_recipients bigint`. No client changes needed — `BroadcastReceipts.tsx` and `broadcastExport.ts` already treat the field as a number.
+## Approach
+Run a one-shot migration that deletes from `broadcast_subscribers` for that channel where `subscribed_at` is within the load test window, then refresh `subscriber_count`.
 
 ```sql
--- 1. Stats RPC
-CREATE OR REPLACE FUNCTION public.get_broadcast_message_stats(_message_id uuid)
-RETURNS TABLE(
-  message_id uuid,
-  total_recipients bigint,        -- was integer
-  push_sent_count integer,
-  push_failed_count integer,
-  read_count bigint,
-  delivery_completed_at timestamptz,
-  delivery_legacy boolean
-) ...  -- body unchanged
+WITH del AS (
+  DELETE FROM public.broadcast_subscribers
+  WHERE channel_id = 'c662a50f-e66d-4dc9-a189-5287e34a0ac2'
+    AND subscribed_at >= '2026-05-06 03:30:00+00'
+    AND subscribed_at <  '2026-05-06 03:31:00+00'
+  RETURNING 1
+)
+SELECT COUNT(*) FROM del;
 
--- 2. Channel report RPC
-CREATE OR REPLACE FUNCTION public.get_channel_broadcast_report(_channel_id uuid, _since timestamptz)
-RETURNS TABLE(
-  message_id uuid,
-  content text,
-  created_at timestamptz,
-  total_recipients bigint,        -- was integer
-  push_sent_count integer,
-  push_failed_count integer,
-  read_count bigint,
-  delivery_completed_at timestamptz,
-  delivery_legacy boolean
-) ...  -- body unchanged
+UPDATE public.broadcast_channels
+SET subscriber_count = (
+  SELECT COUNT(*) FROM public.broadcast_subscribers WHERE channel_id = 'c662a50f-e66d-4dc9-a189-5287e34a0ac2'
+)
+WHERE id = 'c662a50f-e66d-4dc9-a189-5287e34a0ac2';
 ```
 
-Postgres requires `DROP FUNCTION` before changing a `RETURNS TABLE` signature, so the migration will `DROP ... IF EXISTS` first, then `CREATE` with the same body as today.
+## Expected result
+- 11 rows deleted
+- Channel `subscriber_count` returns to 4 (livegigltd, baz_ent, usmaneve, de782e33…)
+- Anyone removed can re-subscribe normally from Discover Channels
 
 ## Verification
-
-- Open a broadcast → tap the receipt strip → sheet renders with delivered/failed/reads.
-- Open the channel export menu → CSV and PDF download for "Last 7 days / 30 days / All time".
-- No new "structure of query" errors in Postgres logs.
+Re-run the audit query — `actual_subs = 4`, `fake_subs = 0`.
