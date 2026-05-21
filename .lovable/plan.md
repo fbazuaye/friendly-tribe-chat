@@ -1,37 +1,56 @@
 ## Goal
 
-When a broadcast channel is created, every member of the organization is automatically subscribed. New members joining the org also get subscribed to all existing channels. Owners stay excluded from being a "subscriber" for delivery counting purposes (existing logic in `get_broadcast_audience_stats` already excludes the owner).
+Swap the bulk SMS pipeline from Africa's Talking to **Twilio**, using a **Twilio Messaging Service** as the sender (best for high-volume political-campaign-style blasts). SMS only — WhatsApp can be added later.
 
-## Changes
+No UI changes for admins: the Bulk SMS composer, contacts, logs, and token costs all stay the same. Only the delivery backend changes.
 
-### 1. Database migration — auto-subscribe triggers
+## Setup (you do these once)
 
-**Trigger A: on `broadcast_channels` INSERT**
-After a channel row is inserted, bulk-insert one `broadcast_subscribers` row for every `profiles.id` where `organization_id = NEW.organization_id`. Use `ON CONFLICT DO NOTHING` so re-runs are safe. The existing `update_broadcast_subscriber_count` trigger will keep `subscriber_count` accurate.
+1. In Twilio Console → **Messaging → Services**, create a Messaging Service:
+   - Use case: *Notify my users* (or *Marketing* for campaigns)
+   - Add one or more sender numbers / a number pool to it
+   - Copy the **Messaging Service SID** (starts with `MG...`)
+2. (Optional but recommended) Enable **SMS Pumping Protection** and tighten **SMS Geo Permissions** to just the countries you send to (e.g. Nigeria) to prevent fraud.
+3. Connect Twilio via Lovable's Twilio connector — this stores your Account SID and API key securely; no manual secret entry needed. I'll also ask you to add one runtime secret: `TWILIO_MESSAGING_SERVICE_SID` (the `MG...` value from step 1).
 
-**Trigger B: on `profiles` INSERT/UPDATE of `organization_id`**
-When a user joins an org (organization_id transitions from NULL → some org, or changes), insert a `broadcast_subscribers` row for that user for every channel in that org. `ON CONFLICT DO NOTHING`.
+## What I'll build
 
-Both triggers run as `SECURITY DEFINER` to bypass RLS.
+### Backend
+- **Connect Twilio connector** to the project (gives edge functions `TWILIO_API_KEY` via the secure gateway — no Account SID/auth-token handling in code).
+- **Add `TWILIO_MESSAGING_SERVICE_SID` secret** so we can route through your Messaging Service.
+- **Rewrite `supabase/functions/send-bulk-sms/index.ts`** to call Twilio's `/Messages.json` via the connector gateway, sending `MessagingServiceSid` + `To` + `Body` per recipient. Keep the existing auth check, admin gate, token deduction, phone normalization (E.164), `sms_logs` writes, and response shape so the UI and token accounting work unchanged.
+- **Update `supabase/functions/deliver-batch/index.ts`** (the queue worker used for very large blasts) the same way — swap the AT call for Twilio, keep the per-recipient success/failure counting and retry/backoff logic intact.
+- **Phone normalization**: ensure numbers go out as E.164 (e.g. `+234...`). Reject obviously invalid numbers before the API call so we don't burn tokens or hit Twilio errors.
+- **Error handling**: map Twilio error codes (e.g. `21610` opted-out, `21614` invalid number, `30007` filtered) into `sms_logs.response_data` so admins can see why a delivery failed.
 
-### 2. Backfill existing channels
+### Cleanup
+- Remove `AFRICASTALKING_API_KEY` and `AFRICASTALKING_USERNAME` from edge function code (the secrets can stay in the project for a bit in case you want to roll back; I can delete them on your say-so).
+- Update the `mem://tech/sms-delivery-infrastructure` and `mem://tech/sms-credential-constraints` memory files to reflect Twilio.
+- Update `mem://features/bulk-sms-implementation` to mention Twilio Messaging Service.
 
-One-shot insert: for every existing `broadcast_channels` row, insert subscribers for all `profiles` in the same org that aren't already subscribed. Then recompute `subscriber_count` for each channel. This will subscribe the 14 missing members to "Edo Ward 12" and any missing members to "Announcement".
+### Not changed
+- Bulk SMS admin UI, contact lists, CSV import, history view.
+- Token costs per SMS, admin-only gating, RLS policies.
+- `sms_logs` and `sms_contacts` table shapes.
+- The `delivery_jobs` queue plumbing (only the worker's HTTP call changes).
 
-### 3. UI tweak — `DiscoverChannels.tsx`
+## Technical details (for reference)
 
-Since every member will now auto-subscribe to every channel, the Discover page will usually be empty. Update its empty-state copy to reflect this ("You're already subscribed to every channel in your organization") and keep the page functional for edge cases (e.g., a member who manually unsubscribed and wants to rejoin).
+Edge function call shape (per recipient or batched):
+```
+POST https://connector-gateway.lovable.dev/twilio/Messages.json
+Headers:
+  Authorization: Bearer ${LOVABLE_API_KEY}
+  X-Connection-Api-Key: ${TWILIO_API_KEY}
+  Content-Type: application/x-www-form-urlencoded
+Body:
+  MessagingServiceSid=${TWILIO_MESSAGING_SERVICE_SID}
+  To=+234...
+  Body=<message>
+```
 
-The "Users can unsubscribe themselves" RLS policy stays intact, so members can still leave a channel via existing UI.
+Twilio's API requires one HTTP call per recipient (no native bulk endpoint), but the Messaging Service handles throughput scaling, sender selection, and queueing automatically. For very large blasts the existing `deliver-batch` worker already chunks recipients and runs in parallel, which fits Twilio's per-second limits.
 
-## Out of scope
+## Open question before I build
 
-- No change to channel creation UI — admins still create channels the same way.
-- No change to broadcast send logic — recipient counting already excludes the owner.
-- No change to token costs.
-
-## Verification
-
-- After migration, `SELECT count(*) FROM broadcast_subscribers WHERE channel_id='836f031d-...'` should be 15 (all org members) and `subscriber_count` on the channel row should match.
-- Create a test channel as super-admin; confirm all 15 members get a subscriber row immediately.
-- Join the org with a new test user; confirm they get a row for both channels.
+**Country coverage**: should I restrict outbound SMS to Nigeria only at the edge-function level (cheapest, safest), or allow any country your Messaging Service is permitted to send to? Default recommendation: Nigeria-only until you explicitly expand.
