@@ -926,6 +926,13 @@ export type Database = {
         }
         Returns: undefined
       }
+      find_organization_by_invite_code: {
+        Args: { _code: string }
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
       get_broadcast_audience_stats: {
         Args: { _channel_id: string }
         Returns: {

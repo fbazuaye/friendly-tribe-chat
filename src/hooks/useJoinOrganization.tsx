@@ -27,18 +27,17 @@ export function useJoinOrganization() {
     setError(null);
 
     try {
-      // 1. Look up organization by invite code
-      const { data: org, error: orgError } = await supabase
-        .from("organizations")
-        .select("id, name")
-        .eq("invite_code", trimmedCode)
-        .maybeSingle();
+      // 1. Look up organization by invite code via security-definer RPC
+      const { data: orgs, error: orgError } = await supabase
+        .rpc("find_organization_by_invite_code", { _code: trimmedCode });
 
       if (orgError) {
         console.error("Error looking up organization:", orgError);
         setError("Failed to verify invite code. Please try again.");
         return false;
       }
+
+      const org = Array.isArray(orgs) ? orgs[0] : orgs;
 
       if (!org) {
         setError("Invalid invite code. Please check and try again.");
