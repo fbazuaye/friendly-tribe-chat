@@ -14,11 +14,6 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const atApiKey = Deno.env.get("AFRICASTALKING_API_KEY");
-
-    if (!atApiKey) {
-      throw new Error("AFRICASTALKING_API_KEY is not configured");
-    }
 
     // Auth check
     const authHeader = req.headers.get("Authorization");

@@ -222,32 +222,79 @@ async function deliverPush(supabase: any, job: any) {
   return { sent, failed, error: null as string | null };
 }
 
+function normalizeE164(raw: string): string | null {
+  if (!raw) return null;
+  let s = String(raw).trim().replace(/[\s\-()]/g, "");
+  if (s.startsWith("00")) s = "+" + s.slice(2);
+  // Nigeria local format (e.g. 0803...) -> +234
+  if (/^0\d{10}$/.test(s)) s = "+234" + s.slice(1);
+  if (!s.startsWith("+")) s = "+" + s;
+  return /^\+\d{8,15}$/.test(s) ? s : null;
+}
+
 async function deliverSms(supabase: any, job: any) {
-  const apiKey = Deno.env.get("AFRICASTALKING_API_KEY");
-  const username = Deno.env.get("AFRICASTALKING_USERNAME") || "Sandbox";
-  if (!apiKey) return { success: false, sent: 0, failed: (job.phone_numbers || []).length, error: "AT key missing" };
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const TWILIO_API_KEY = Deno.env.get("TWILIO_API_KEY");
+  const MSG_SVC_SID = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
 
   const phones: string[] = job.phone_numbers || [];
   if (phones.length === 0) return { success: true, sent: 0, failed: 0, error: null };
 
-  const isSandbox = username === "Sandbox";
-  const apiUrl = isSandbox
-    ? "https://api.sandbox.africastalking.com/version1/messaging"
-    : "https://api.africastalking.com/version1/messaging";
+  if (!LOVABLE_API_KEY) return { success: false, sent: 0, failed: phones.length, error: "LOVABLE_API_KEY missing" };
+  if (!TWILIO_API_KEY) return { success: false, sent: 0, failed: phones.length, error: "TWILIO_API_KEY missing (connect Twilio)" };
+  if (!MSG_SVC_SID) return { success: false, sent: 0, failed: phones.length, error: "TWILIO_MESSAGING_SERVICE_SID missing" };
 
-  const formData = new URLSearchParams();
-  formData.append("username", username);
-  formData.append("to", phones.join(","));
-  formData.append("message", String(job.payload?.message ?? ""));
+  const message = String(job.payload?.message ?? "");
+  const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 
-  const resp = await fetch(apiUrl, {
-    method: "POST",
-    headers: { apiKey, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body: formData.toString(),
-  });
-  const text = await resp.text();
-  if (!resp.ok) return { success: false, sent: 0, failed: phones.length, error: text.slice(0, 500) };
-  return { success: true, sent: phones.length, failed: 0, error: null };
+  let sent = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  // Twilio has no native bulk endpoint — Messaging Service handles per-second pacing.
+  // Send each recipient in parallel within the batch (batches are already chunked by expandSms).
+  const results = await Promise.allSettled(
+    phones.map(async (raw) => {
+      const to = normalizeE164(raw);
+      if (!to) throw new Error(`invalid number: ${raw}`);
+      const body = new URLSearchParams({
+        MessagingServiceSid: MSG_SVC_SID,
+        To: to,
+        Body: message,
+      });
+      const r = await fetch(`${GATEWAY_URL}/Messages.json`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "X-Connection-Api-Key": TWILIO_API_KEY,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const code = data?.code ?? r.status;
+        const msg = data?.message ?? "Twilio error";
+        throw new Error(`[${code}] ${msg}`);
+      }
+      return data;
+    })
+  );
+
+  for (const res of results) {
+    if (res.status === "fulfilled") sent++;
+    else {
+      failed++;
+      if (errors.length < 5) errors.push(String(res.reason?.message ?? res.reason));
+    }
+  }
+
+  return {
+    success: sent > 0,
+    sent,
+    failed,
+    error: errors.length ? errors.join(" | ").slice(0, 500) : null,
+  };
 }
 
 // ---- Expanders ----
