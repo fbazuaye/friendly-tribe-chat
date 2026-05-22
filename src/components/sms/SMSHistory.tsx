@@ -134,16 +134,24 @@ export function SMSHistory() {
               const total = log.recipient_count || 1;
               const pct = Math.min(100, (accounted / total) * 100);
               return (
-                <div key={log.id} className="p-3 rounded-lg bg-secondary/30 space-y-1">
-                  <div className="flex items-center justify-between">
+                <button
+                  key={log.id}
+                  type="button"
+                  onClick={() => setOpenLog(log)}
+                  className="w-full text-left p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors space-y-1 group"
+                >
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-muted-foreground">
                       {format(new Date(log.created_at), "MMM d, yyyy · h:mm a")}
                     </span>
-                    <Badge variant={statusColor(log.status) as any}>
-                      {inFlight && prog
-                        ? `${log.status} · ${prog.pending + prog.claimed} batches left`
-                        : log.status}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={statusColor(log.status) as any}>
+                        {inFlight && prog
+                          ? `${log.status} · ${prog.pending + prog.claimed} batches left`
+                          : log.status}
+                      </Badge>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </div>
                   <p className="text-sm line-clamp-2">{log.message}</p>
                   {inFlight && prog ? (
@@ -160,16 +168,32 @@ export function SMSHistory() {
                       </p>
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground tabular-nums">
-                      {log.recipient_count.toLocaleString()} recipient{log.recipient_count === 1 ? "" : "s"}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums">
+                      <span className="text-muted-foreground">
+                        {log.recipient_count.toLocaleString()} recipient{log.recipient_count === 1 ? "" : "s"}
+                      </span>
+                      {(log.delivered_count ?? 0) > 0 && (
+                        <span className="text-emerald-400">✓ {log.delivered_count!.toLocaleString()} delivered</span>
+                      )}
+                      {(log.undelivered_count ?? 0) > 0 && (
+                        <span className="text-amber-400">{log.undelivered_count!.toLocaleString()} undelivered</span>
+                      )}
+                      {(log.failed_count ?? 0) > 0 && (
+                        <span className="text-destructive">{log.failed_count!.toLocaleString()} failed</span>
+                      )}
+                    </div>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
         )}
       </CardContent>
+      <SMSCampaignDetail
+        smsLogId={openLog?.id ?? null}
+        message={openLog?.message ?? ""}
+        onClose={() => setOpenLog(null)}
+      />
     </Card>
   );
 }
