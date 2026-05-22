@@ -128,8 +128,19 @@ export function SMSCampaignDetail({ smsLogId, message, onClose }: Props) {
   return (
     <Sheet open={!!smsLogId} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
-        <SheetHeader>
+        <SheetHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
           <SheetTitle>Campaign analytics</SheetTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runBackfill}
+            disabled={backfilling}
+            className="h-8 mr-6"
+            title="Recover per-recipient delivery status from the carrier."
+          >
+            {backfilling ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+            Refresh status
+          </Button>
         </SheetHeader>
 
         <div className="mt-4 space-y-4">
