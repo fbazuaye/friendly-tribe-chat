@@ -668,6 +668,7 @@ export type Database = {
       sms_logs: {
         Row: {
           created_at: string
+          delivered_count: number
           failed_count: number
           id: string
           message: string
@@ -677,9 +678,11 @@ export type Database = {
           sent_by: string | null
           sent_count: number
           status: string
+          undelivered_count: number
         }
         Insert: {
           created_at?: string
+          delivered_count?: number
           failed_count?: number
           id?: string
           message: string
@@ -689,9 +692,11 @@ export type Database = {
           sent_by?: string | null
           sent_count?: number
           status?: string
+          undelivered_count?: number
         }
         Update: {
           created_at?: string
+          delivered_count?: number
           failed_count?: number
           id?: string
           message?: string
@@ -701,6 +706,7 @@ export type Database = {
           sent_by?: string | null
           sent_count?: number
           status?: string
+          undelivered_count?: number
         }
         Relationships: [
           {
@@ -711,6 +717,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sms_recipients: {
+        Row: {
+          delivered_at: string | null
+          error_code: string | null
+          error_message: string | null
+          id: string
+          message_sid: string | null
+          organization_id: string
+          phone_number: string
+          sent_at: string | null
+          sms_log_id: string
+          status: string
+          submitted_at: string
+          updated_at: string
+        }
+        Insert: {
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          message_sid?: string | null
+          organization_id: string
+          phone_number: string
+          sent_at?: string | null
+          sms_log_id: string
+          status?: string
+          submitted_at?: string
+          updated_at?: string
+        }
+        Update: {
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          message_sid?: string | null
+          organization_id?: string
+          phone_number?: string
+          sent_at?: string | null
+          sms_log_id?: string
+          status?: string
+          submitted_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       token_action_costs: {
         Row: {
@@ -881,6 +932,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_sms_status_update: {
+        Args: {
+          _error_code: string
+          _error_message: string
+          _message_sid: string
+          _status: string
+        }
+        Returns: undefined
+      }
       bulk_subscribe_users: {
         Args: { _channel_id: string; _user_ids: string[] }
         Returns: number
@@ -1012,6 +1072,14 @@ export type Database = {
           phone: string
           role: string
         }[]
+      }
+      get_sms_campaign_analytics: {
+        Args: { _sms_log_id: string }
+        Returns: Json
+      }
+      get_sms_org_analytics: {
+        Args: { _from: string; _org_id: string; _to: string }
+        Returns: Json
       }
       get_unread_community_counts: {
         Args: { _user_id: string }

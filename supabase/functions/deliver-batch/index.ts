@@ -250,10 +250,17 @@ async function deliverSms(supabase: any, job: any) {
   const message = String(job.payload?.message ?? "");
   const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+  const CB_TOKEN = Deno.env.get("SMS_STATUS_CALLBACK_TOKEN") || "";
+  const statusCallback = SUPABASE_URL
+    ? `${SUPABASE_URL}/functions/v1/twilio-sms-status${CB_TOKEN ? `?t=${encodeURIComponent(CB_TOKEN)}` : ""}`
+    : "";
+
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
   const outcomes: any[] = [];
+  const recipientRows: any[] = [];
 
   const results = await Promise.allSettled(
     phones.map(async (raw) => {
@@ -262,6 +269,7 @@ async function deliverSms(supabase: any, job: any) {
       const params: Record<string, string> = { To: to, Body: message };
       if (FROM_NUMBER) params.From = FROM_NUMBER;
       else params.MessagingServiceSid = MSG_SVC_SID!;
+      if (statusCallback) params.StatusCallback = statusCallback;
       const body = new URLSearchParams(params);
       const r = await fetch(`${GATEWAY_URL}/Messages.json`, {
         method: "POST",
@@ -285,19 +293,49 @@ async function deliverSms(supabase: any, job: any) {
     })
   );
 
-  for (const res of results) {
+  for (let i = 0; i < results.length; i++) {
+    const res = results[i];
+    const rawNumber = phones[i];
     if (res.status === "fulfilled") {
       sent++;
       outcomes.push({ ok: true, ...res.value });
+      recipientRows.push({
+        sms_log_id: job.parent_id,
+        organization_id: job.organization_id,
+        phone_number: res.value.to || rawNumber,
+        message_sid: res.value.sid || null,
+        status: "sent",
+      });
     } else {
       failed++;
       const reason: any = res.reason;
       outcomes.push({ ok: false, to: reason?.to, code: reason?.code, error: String(reason?.message ?? reason) });
       if (errors.length < 5) errors.push(String(reason?.message ?? reason));
+      recipientRows.push({
+        sms_log_id: job.parent_id,
+        organization_id: job.organization_id,
+        phone_number: reason?.to || rawNumber,
+        status: "failed",
+        error_code: reason?.code ? String(reason.code) : null,
+        error_message: String(reason?.message ?? reason).slice(0, 500),
+      });
     }
   }
 
-  // Persist per-recipient outcomes onto sms_logs.response_data.recipients
+  if (job.parent_id && recipientRows.length > 0) {
+    try {
+      for (let i = 0; i < recipientRows.length; i += 500) {
+        const { error: rErr } = await supabase
+          .from("sms_recipients")
+          .insert(recipientRows.slice(i, i + 500));
+        if (rErr) console.error("sms_recipients insert err:", rErr);
+      }
+    } catch (e) {
+      console.error("sms_recipients insert exception:", e);
+    }
+  }
+
+  // Backward-compat: keep last 1000 outcomes in sms_logs.response_data
   if (job.parent_id) {
     try {
       const { data: parent } = await supabase

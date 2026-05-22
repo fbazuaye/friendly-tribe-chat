@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, MessageSquare, Users, History, Loader2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, MessageSquare, Users, History, Loader2, ShieldAlert, BarChart3 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { SMSContactManager } from "@/components/sms/SMSContactManager";
 import { SMSComposer } from "@/components/sms/SMSComposer";
 import { SMSHistory } from "@/components/sms/SMSHistory";
+import { SMSAnalytics } from "@/components/sms/SMSAnalytics";
 
 export default function BulkSMS() {
   const navigate = useNavigate();
@@ -61,7 +62,7 @@ export default function BulkSMS() {
 
       <div className="p-4 pb-24">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-secondary/50">
+          <TabsList className="grid w-full grid-cols-4 bg-secondary/50">
             <TabsTrigger value="compose" className="gap-2">
               <MessageSquare className="w-4 h-4" />
               <span className="hidden sm:inline">Compose</span>
@@ -74,6 +75,10 @@ export default function BulkSMS() {
               <History className="w-4 h-4" />
               <span className="hidden sm:inline">History</span>
             </TabsTrigger>
+            <TabsTrigger value="analytics" className="gap-2">
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">Analytics</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="compose" className="mt-6">
@@ -84,6 +89,9 @@ export default function BulkSMS() {
           </TabsContent>
           <TabsContent value="history" className="mt-6">
             <SMSHistory />
+          </TabsContent>
+          <TabsContent value="analytics" className="mt-6">
+            <SMSAnalytics />
           </TabsContent>
         </Tabs>
       </div>
