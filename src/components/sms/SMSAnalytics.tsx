@@ -3,10 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  BarChart3, CheckCircle2, XCircle, Send, Clock, Loader2, TrendingUp, Users,
+  BarChart3, CheckCircle2, XCircle, Send, Clock, Loader2, TrendingUp, Users, RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "sonner";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
