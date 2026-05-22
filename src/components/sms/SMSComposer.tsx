@@ -129,7 +129,7 @@ export function SMSComposer() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              {recipients.length} recipient(s) selected
+              {recipients.length} valid recipient(s){invalidCount > 0 ? ` · ${invalidCount} invalid skipped` : ""}
             </p>
           </div>
 
