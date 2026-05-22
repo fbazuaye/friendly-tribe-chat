@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.load-test-broadcast]
 verify_jwt = false
+
+[functions.twilio-sms-status]
+verify_jwt = false
