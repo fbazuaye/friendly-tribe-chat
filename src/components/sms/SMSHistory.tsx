@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { History, Loader2 } from "lucide-react";
+import { History, Loader2, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { format } from "date-fns";
+import { SMSCampaignDetail } from "./SMSCampaignDetail";
 
 interface SmsLog {
   id: string;
@@ -12,6 +13,10 @@ interface SmsLog {
   recipient_count: number;
   status: string;
   created_at: string;
+  delivered_count?: number;
+  undelivered_count?: number;
+  failed_count?: number;
+  sent_count?: number;
 }
 
 type Progress = {
@@ -30,13 +35,14 @@ export function SMSHistory() {
   const [logs, setLogs] = useState<SmsLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [progressById, setProgressById] = useState<Record<string, Progress>>({});
+  const [openLog, setOpenLog] = useState<SmsLog | null>(null);
 
   useEffect(() => {
     if (!organizationId) return;
     const fetchLogs = async () => {
       const { data, error } = await supabase
         .from("sms_logs")
-        .select("id, message, recipient_count, status, created_at")
+        .select("id, message, recipient_count, status, created_at, delivered_count, undelivered_count, failed_count, sent_count")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(50);
