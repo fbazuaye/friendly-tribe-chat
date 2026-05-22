@@ -121,8 +121,8 @@ export function SMSAnalytics() {
 
   return (
     <div className="space-y-4">
-      {/* Range selector */}
-      <div className="flex flex-wrap gap-2">
+      {/* Range selector + backfill */}
+      <div className="flex flex-wrap items-center gap-2">
         {RANGES.map((r) => (
           <Button
             key={r.key}
@@ -134,6 +134,17 @@ export function SMSAnalytics() {
             {r.label}
           </Button>
         ))}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={runBackfill}
+          disabled={backfilling}
+          className="h-8 ml-auto"
+          title="Recover delivery status for older campaigns that only show 'Sent'."
+        >
+          {backfilling ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+          Backfill history
+        </Button>
       </div>
 
       {loading ? (
