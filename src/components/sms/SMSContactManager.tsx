@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { normalizePhoneE164 } from "@/lib/phone";
 
 interface Contact {
   id: string;
@@ -65,10 +66,15 @@ export function SMSContactManager() {
 
   const addContact = async () => {
     if (!organizationId || !user || !newPhone.trim()) return;
+    const normalized = normalizePhoneE164(newPhone);
+    if (!normalized) {
+      toast.error("Invalid phone number. Use format like +2348031234567 or 08031234567");
+      return;
+    }
     setAdding(true);
     const { error } = await supabase.from("sms_contacts").insert({
       organization_id: organizationId,
-      phone_number: newPhone.trim(),
+      phone_number: normalized,
       name: newName.trim() || null,
       email: newEmail.trim() || null,
       created_by: user.id,
@@ -92,16 +98,25 @@ export function SMSContactManager() {
     if (lines.length === 0) return;
 
     setAdding(true);
-    const rows = lines.map((line) => {
+    let skipped = 0;
+    const rows = lines.flatMap((line) => {
       const parts = line.split(/\t|;|,/).map((p) => p.trim());
-      return {
+      const normalized = normalizePhoneE164(parts[0]);
+      if (!normalized) { skipped++; return []; }
+      return [{
         organization_id: organizationId,
-        phone_number: parts[0],
+        phone_number: normalized,
         name: parts[1] || null,
         email: parts[2] || null,
         created_by: user.id,
-      };
+      }];
     });
+
+    if (rows.length === 0) {
+      toast.error("No valid phone numbers found");
+      setAdding(false);
+      return;
+    }
 
     const { error } = await supabase.from("sms_contacts").upsert(rows, {
       onConflict: "organization_id,phone_number",
@@ -111,7 +126,7 @@ export function SMSContactManager() {
       console.error("Bulk add error:", error);
       toast.error("Some contacts could not be added");
     } else {
-      toast.success(`${rows.length} contact(s) imported`);
+      toast.success(`${rows.length} contact(s) imported${skipped > 0 ? `, ${skipped} skipped (invalid)` : ""}`);
       setBulkInput("");
       setShowBulk(false);
       fetchContacts();
@@ -138,9 +153,11 @@ export function SMSContactManager() {
     for (const cols of dataRows) {
       const phone = cols[phoneIdx]?.trim();
       if (!phone) { skipped++; continue; }
+      const normalized = normalizePhoneE164(phone);
+      if (!normalized) { skipped++; continue; }
       rows.push({
         organization_id: organizationId,
-        phone_number: phone,
+        phone_number: normalized,
         name: nameIdx >= 0 ? cols[nameIdx]?.trim() || null : null,
         email: emailIdx >= 0 ? cols[emailIdx]?.trim() || null : null,
         created_by: user.id,
