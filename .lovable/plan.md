@@ -1,56 +1,35 @@
-## Goal
+## Context
 
-Swap the bulk SMS pipeline from Africa's Talking to **Twilio**, using a **Twilio Messaging Service** as the sender (best for high-volume political-campaign-style blasts). SMS only — WhatsApp can be added later.
+Upgrading Twilio (per the advice you got) removes the verified-caller-ID restriction — that's the right move and unblocks sending to any Nigerian number. But it doesn't fix the app-side bug: your manual Twilio test delivered because it used **From `+14029617537`**, while our `deliver-batch` edge function sends with **`MessagingServiceSid`**. On a Messaging Service with no sender/sender-pool attached, Twilio accepts the request (`delivery_jobs` shows `succeeded`) and silently drops it. That's why blasts show "queued" forever in the app even though Twilio reported no error.
 
-No UI changes for admins: the Bulk SMS composer, contacts, logs, and token costs all stay the same. Only the delivery backend changes.
+## Plan
 
-## Setup (you do these once)
+### 1. `deliver-batch` — sender selection
+Update the Twilio POST in `supabase/functions/deliver-batch/index.ts` to pick a sender in this order:
+1. If `TWILIO_FROM_NUMBER` secret is set → send with `From=<that number>` (works today on your trial/upgraded number)
+2. Else if `TWILIO_MESSAGING_SERVICE_SID` is set → send with `MessagingServiceSid=<sid>` (for later, once you attach a sender pool or register an Alphanumeric Sender ID for Nigeria)
+3. Else fail the job with a clear "no Twilio sender configured" error
 
-1. In Twilio Console → **Messaging → Services**, create a Messaging Service:
-   - Use case: *Notify my users* (or *Marketing* for campaigns)
-   - Add one or more sender numbers / a number pool to it
-   - Copy the **Messaging Service SID** (starts with `MG...`)
-2. (Optional but recommended) Enable **SMS Pumping Protection** and tighten **SMS Geo Permissions** to just the countries you send to (e.g. Nigeria) to prevent fraud.
-3. Connect Twilio via Lovable's Twilio connector — this stores your Account SID and API key securely; no manual secret entry needed. I'll also ask you to add one runtime secret: `TWILIO_MESSAGING_SERVICE_SID` (the `MG...` value from step 1).
+This means we can ship today on `+14029617537`, and switch to a Messaging Service later by just unsetting the From secret — no code change.
 
-## What I'll build
+### 2. Capture Twilio response per recipient
+Right now we throw away the response body on success. Parse Twilio's JSON response and store `sid`, `status`, and any `error_code` / `error_message` into `sms_logs.response_data`, plus the first error string into `delivery_jobs.last_error`, so the History tab actually tells you why a number failed (e.g. `[21408] Permission to send an SMS has not been enabled for the region`, `[21610] opted out`).
 
-### Backend
-- **Connect Twilio connector** to the project (gives edge functions `TWILIO_API_KEY` via the secure gateway — no Account SID/auth-token handling in code).
-- **Add `TWILIO_MESSAGING_SERVICE_SID` secret** so we can route through your Messaging Service.
-- **Rewrite `supabase/functions/send-bulk-sms/index.ts`** to call Twilio's `/Messages.json` via the connector gateway, sending `MessagingServiceSid` + `To` + `Body` per recipient. Keep the existing auth check, admin gate, token deduction, phone normalization (E.164), `sms_logs` writes, and response shape so the UI and token accounting work unchanged.
-- **Update `supabase/functions/deliver-batch/index.ts`** (the queue worker used for very large blasts) the same way — swap the AT call for Twilio, keep the per-recipient success/failure counting and retry/backoff logic intact.
-- **Phone normalization**: ensure numbers go out as E.164 (e.g. `+234...`). Reject obviously invalid numbers before the API call so we don't burn tokens or hit Twilio errors.
-- **Error handling**: map Twilio error codes (e.g. `21610` opted-out, `21614` invalid number, `30007` filtered) into `sms_logs.response_data` so admins can see why a delivery failed.
+### 3. Roll status up from `delivery_jobs` to `sms_logs`
+Today `sms_logs.status` is stuck on `queued` even after Twilio accepts the messages. Migration:
+- Add `sent_count INT DEFAULT 0` and `failed_count INT DEFAULT 0` columns to `sms_logs`
+- Extend the existing `complete_delivery_job` RPC: for `job_type='sms'`, fan per-job success/failure counts up to the parent `sms_logs` row, and once no `pending`/`claimed` children remain, flip `sms_logs.status` to `sent` (all good), `partial` (some failed), or `failed` (all failed)
 
-### Cleanup
-- Remove `AFRICASTALKING_API_KEY` and `AFRICASTALKING_USERNAME` from edge function code (the secrets can stay in the project for a bit in case you want to roll back; I can delete them on your say-so).
-- Update the `mem://tech/sms-delivery-infrastructure` and `mem://tech/sms-credential-constraints` memory files to reflect Twilio.
-- Update `mem://features/bulk-sms-implementation` to mention Twilio Messaging Service.
+### 4. Add the `TWILIO_FROM_NUMBER` secret
+I'll request it via the secret tool — value: `+14029617537` (the number Twilio successfully delivered from in your test). You can change it later to any other Twilio number you own.
 
-### Not changed
-- Bulk SMS admin UI, contact lists, CSV import, history view.
-- Token costs per SMS, admin-only gating, RLS policies.
-- `sms_logs` and `sms_contacts` table shapes.
-- The `delivery_jobs` queue plumbing (only the worker's HTTP call changes).
+## What you still need to do in Twilio
 
-## Technical details (for reference)
+- **Upgrade the account** (the advice you posted) — this is the actual unblocker for non-verified Nigerian recipients.
+- **Save the geo permissions** with Nigeria enabled (the page in your earlier screenshot was unsaved).
+- *(Optional, later)* Register an **Alphanumeric Sender ID** for Nigeria — Nigerian carriers heavily filter US long codes at volume, so deliverability from `+1402…` will degrade as you scale. Once registered, attach it to a Messaging Service and unset `TWILIO_FROM_NUMBER` to switch over.
 
-Edge function call shape (per recipient or batched):
-```
-POST https://connector-gateway.lovable.dev/twilio/Messages.json
-Headers:
-  Authorization: Bearer ${LOVABLE_API_KEY}
-  X-Connection-Api-Key: ${TWILIO_API_KEY}
-  Content-Type: application/x-www-form-urlencoded
-Body:
-  MessagingServiceSid=${TWILIO_MESSAGING_SERVICE_SID}
-  To=+234...
-  Body=<message>
-```
+## Out of scope (happy to plan as follow-up)
 
-Twilio's API requires one HTTP call per recipient (no native bulk endpoint), but the Messaging Service handles throughput scaling, sender selection, and queueing automatically. For very large blasts the existing `deliver-batch` worker already chunks recipients and runs in parallel, which fits Twilio's per-second limits.
-
-## Open question before I build
-
-**Country coverage**: should I restrict outbound SMS to Nigeria only at the edge-function level (cheapest, safest), or allow any country your Messaging Service is permitted to send to? Default recommendation: Nigeria-only until you explicitly expand.
+- True per-recipient delivery receipts (`delivered` / `undelivered` / carrier `failed`) — needs a Twilio status-callback webhook + new `sms_recipients` table.
+- Alphanumeric Sender ID registration workflow.
