@@ -668,32 +668,38 @@ export type Database = {
       sms_logs: {
         Row: {
           created_at: string
+          failed_count: number
           id: string
           message: string
           organization_id: string
           recipient_count: number
           response_data: Json | null
           sent_by: string | null
+          sent_count: number
           status: string
         }
         Insert: {
           created_at?: string
+          failed_count?: number
           id?: string
           message: string
           organization_id: string
           recipient_count?: number
           response_data?: Json | null
           sent_by?: string | null
+          sent_count?: number
           status?: string
         }
         Update: {
           created_at?: string
+          failed_count?: number
           id?: string
           message?: string
           organization_id?: string
           recipient_count?: number
           response_data?: Json | null
           sent_by?: string | null
+          sent_count?: number
           status?: string
         }
         Relationships: [
