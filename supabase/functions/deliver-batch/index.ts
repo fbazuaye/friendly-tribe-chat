@@ -236,13 +236,16 @@ async function deliverSms(supabase: any, job: any) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const TWILIO_API_KEY = Deno.env.get("TWILIO_API_KEY");
   const MSG_SVC_SID = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
+  const FROM_NUMBER = Deno.env.get("TWILIO_FROM_NUMBER");
 
   const phones: string[] = job.phone_numbers || [];
   if (phones.length === 0) return { success: true, sent: 0, failed: 0, error: null };
 
   if (!LOVABLE_API_KEY) return { success: false, sent: 0, failed: phones.length, error: "LOVABLE_API_KEY missing" };
   if (!TWILIO_API_KEY) return { success: false, sent: 0, failed: phones.length, error: "TWILIO_API_KEY missing (connect Twilio)" };
-  if (!MSG_SVC_SID) return { success: false, sent: 0, failed: phones.length, error: "TWILIO_MESSAGING_SERVICE_SID missing" };
+  if (!FROM_NUMBER && !MSG_SVC_SID) {
+    return { success: false, sent: 0, failed: phones.length, error: "No Twilio sender configured: set TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID" };
+  }
 
   const message = String(job.payload?.message ?? "");
   const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
@@ -250,18 +253,16 @@ async function deliverSms(supabase: any, job: any) {
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
+  const outcomes: any[] = [];
 
-  // Twilio has no native bulk endpoint — Messaging Service handles per-second pacing.
-  // Send each recipient in parallel within the batch (batches are already chunked by expandSms).
   const results = await Promise.allSettled(
     phones.map(async (raw) => {
       const to = normalizeE164(raw);
       if (!to) throw new Error(`invalid number: ${raw}`);
-      const body = new URLSearchParams({
-        MessagingServiceSid: MSG_SVC_SID,
-        To: to,
-        Body: message,
-      });
+      const params: Record<string, string> = { To: to, Body: message };
+      if (FROM_NUMBER) params.From = FROM_NUMBER;
+      else params.MessagingServiceSid = MSG_SVC_SID!;
+      const body = new URLSearchParams(params);
       const r = await fetch(`${GATEWAY_URL}/Messages.json`, {
         method: "POST",
         headers: {
@@ -275,17 +276,38 @@ async function deliverSms(supabase: any, job: any) {
       if (!r.ok) {
         const code = data?.code ?? r.status;
         const msg = data?.message ?? "Twilio error";
-        throw new Error(`[${code}] ${msg}`);
+        const err = new Error(`[${code}] ${msg}`) as any;
+        err.to = to;
+        err.code = code;
+        throw err;
       }
-      return data;
+      return { to, sid: data?.sid, status: data?.status };
     })
   );
 
   for (const res of results) {
-    if (res.status === "fulfilled") sent++;
-    else {
+    if (res.status === "fulfilled") {
+      sent++;
+      outcomes.push({ ok: true, ...res.value });
+    } else {
       failed++;
-      if (errors.length < 5) errors.push(String(res.reason?.message ?? res.reason));
+      const reason: any = res.reason;
+      outcomes.push({ ok: false, to: reason?.to, code: reason?.code, error: String(reason?.message ?? reason) });
+      if (errors.length < 5) errors.push(String(reason?.message ?? reason));
+    }
+  }
+
+  // Persist per-recipient outcomes onto sms_logs.response_data.recipients
+  if (job.parent_id) {
+    try {
+      const { data: parent } = await supabase
+        .from("sms_logs").select("response_data").eq("id", job.parent_id).single();
+      const prev = (parent?.response_data ?? {}) as any;
+      const recipients = Array.isArray(prev.recipients) ? prev.recipients : [];
+      const merged = { ...prev, recipients: recipients.concat(outcomes).slice(-1000) };
+      await supabase.from("sms_logs").update({ response_data: merged }).eq("id", job.parent_id);
+    } catch (e) {
+      console.error("sms_logs response_data update err:", e);
     }
   }
 
