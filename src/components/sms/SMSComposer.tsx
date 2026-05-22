@@ -31,25 +31,35 @@ export function SMSComposer() {
 
   useEffect(() => { loadContacts(); }, [organizationId]);
 
-  const getRecipients = (): string[] => {
-    if (useAllContacts) {
-      return contacts.map((c) => c.phone_number);
+  const getRecipients = (): { valid: string[]; invalid: number } => {
+    const raw = useAllContacts
+      ? contacts.map((c) => c.phone_number)
+      : manualNumbers.split(/[,\n]+/).map((n) => n.trim()).filter((n) => n.length > 0);
+    let invalid = 0;
+    const valid: string[] = [];
+    const seen = new Set<string>();
+    for (const r of raw) {
+      const n = normalizePhoneE164(r);
+      if (!n) { invalid++; continue; }
+      if (seen.has(n)) continue;
+      seen.add(n);
+      valid.push(n);
     }
-    return manualNumbers
-      .split(/[,\n]+/)
-      .map((n) => n.trim())
-      .filter((n) => n.length > 0);
+    return { valid, invalid };
   };
 
   const handleSend = async () => {
-    const recipients = getRecipients();
+    const { valid: recipients, invalid } = getRecipients();
     if (recipients.length === 0) {
-      toast.error("No recipients selected");
+      toast.error("No valid recipients");
       return;
     }
     if (!message.trim()) {
       toast.error("Message cannot be empty");
       return;
+    }
+    if (invalid > 0) {
+      toast.warning(`${invalid} invalid number(s) skipped`);
     }
 
     setSending(true);
