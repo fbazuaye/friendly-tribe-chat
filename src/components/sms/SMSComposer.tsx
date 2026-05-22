@@ -84,7 +84,7 @@ export function SMSComposer() {
     }
   };
 
-  const recipients = getRecipients();
+  const { valid: recipients, invalid: invalidCount } = getRecipients();
   const charCount = message.length;
 
   return (
