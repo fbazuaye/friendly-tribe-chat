@@ -51,9 +51,11 @@ export function SMSAnalytics() {
   const { organizationId } = useUserRole();
   const [rangeKey, setRangeKey] = useState("30d");
   const [loading, setLoading] = useState(true);
+  const [backfilling, setBackfilling] = useState(false);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [daily, setDaily] = useState<DailyPoint[]>([]);
   const [errors, setErrors] = useState<ErrorRow[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!organizationId) return;
@@ -76,7 +78,31 @@ export function SMSAnalytics() {
       }
       setLoading(false);
     })();
-  }, [organizationId, rangeKey]);
+  }, [organizationId, rangeKey, reloadKey]);
+
+  const runBackfill = async () => {
+    if (!organizationId || backfilling) return;
+    setBackfilling(true);
+    const t = toast.loading("Backfilling historical delivery status…");
+    try {
+      const { data, error } = await supabase.functions.invoke("sms-backfill-status", {
+        body: { org_id: organizationId, limit: 200 },
+      });
+      if (error) throw error;
+      const r = data as any;
+      toast.success(
+        `Backfill complete — ${r?.logsScanned ?? 0} campaigns scanned, ` +
+        `${r?.recipientsInserted ?? 0} recipients recovered, ` +
+        `${r?.statusUpdates ?? 0} statuses refreshed${r?.twilioPollingEnabled === false ? " (Twilio polling disabled)" : ""}.`,
+        { id: t }
+      );
+      setReloadKey((k) => k + 1);
+    } catch (e: any) {
+      toast.error(`Backfill failed: ${e?.message ?? String(e)}`, { id: t });
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   const deliveryRate = useMemo(() => {
     if (!totals || totals.sent === 0) return 0;
