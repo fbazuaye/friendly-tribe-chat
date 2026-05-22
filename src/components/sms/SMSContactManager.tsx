@@ -66,10 +66,15 @@ export function SMSContactManager() {
 
   const addContact = async () => {
     if (!organizationId || !user || !newPhone.trim()) return;
+    const normalized = normalizePhoneE164(newPhone);
+    if (!normalized) {
+      toast.error("Invalid phone number. Use format like +2348031234567 or 08031234567");
+      return;
+    }
     setAdding(true);
     const { error } = await supabase.from("sms_contacts").insert({
       organization_id: organizationId,
-      phone_number: newPhone.trim(),
+      phone_number: normalized,
       name: newName.trim() || null,
       email: newEmail.trim() || null,
       created_by: user.id,
