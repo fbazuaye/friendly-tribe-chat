@@ -153,9 +153,11 @@ export function SMSContactManager() {
     for (const cols of dataRows) {
       const phone = cols[phoneIdx]?.trim();
       if (!phone) { skipped++; continue; }
+      const normalized = normalizePhoneE164(phone);
+      if (!normalized) { skipped++; continue; }
       rows.push({
         organization_id: organizationId,
-        phone_number: phone,
+        phone_number: normalized,
         name: nameIdx >= 0 ? cols[nameIdx]?.trim() || null : null,
         email: emailIdx >= 0 ? cols[emailIdx]?.trim() || null : null,
         created_by: user.id,
