@@ -8,6 +8,7 @@ import { Send, Loader2, Users, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
+import { normalizePhoneE164 } from "@/lib/phone";
 
 export function SMSComposer() {
   const { organizationId } = useUserRole();
