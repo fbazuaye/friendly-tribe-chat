@@ -15,7 +15,11 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const expected = Deno.env.get("SMS_STATUS_CALLBACK_TOKEN");
-    if (expected && url.searchParams.get("t") !== expected) {
+    if (!expected) {
+      console.error("SMS_STATUS_CALLBACK_TOKEN not configured; rejecting callback");
+      return new Response("forbidden", { status: 403, headers: corsHeaders });
+    }
+    if (url.searchParams.get("t") !== expected) {
       return new Response("forbidden", { status: 403, headers: corsHeaders });
     }
 
