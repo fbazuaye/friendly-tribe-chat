@@ -1129,6 +1129,10 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      recompute_sms_log_status: {
+        Args: { _sms_log_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "moderator" | "user"
