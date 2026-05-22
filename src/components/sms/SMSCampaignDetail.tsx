@@ -3,8 +3,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Download, CheckCircle2, XCircle, Send, Clock, TrendingUp } from "lucide-react";
+import { Loader2, Download, CheckCircle2, XCircle, Send, Clock, TrendingUp, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "sonner";
 
 type Totals = {
   submitted: number; sent: number; delivered: number;
@@ -35,10 +37,13 @@ interface Props {
 }
 
 export function SMSCampaignDetail({ smsLogId, message, onClose }: Props) {
+  const { organizationId } = useUserRole();
   const [loading, setLoading] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [errors, setErrors] = useState<ErrorRow[]>([]);
   const [recipients, setRecipients] = useState<any[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!smsLogId) return;
@@ -60,7 +65,29 @@ export function SMSCampaignDetail({ smsLogId, message, onClose }: Props) {
       setRecipients(recs ?? []);
       setLoading(false);
     })();
-  }, [smsLogId]);
+  }, [smsLogId, reloadKey]);
+
+  const runBackfill = async () => {
+    if (!smsLogId || !organizationId || backfilling) return;
+    setBackfilling(true);
+    const t = toast.loading("Refreshing delivery status…");
+    try {
+      const { data, error } = await supabase.functions.invoke("sms-backfill-status", {
+        body: { org_id: organizationId, sms_log_id: smsLogId },
+      });
+      if (error) throw error;
+      const r = data as any;
+      toast.success(
+        `Recovered ${r?.recipientsInserted ?? 0} recipients · refreshed ${r?.statusUpdates ?? 0} statuses${r?.twilioPollingEnabled === false ? " (Twilio polling disabled)" : ""}.`,
+        { id: t }
+      );
+      setReloadKey((k) => k + 1);
+    } catch (e: any) {
+      toast.error(`Backfill failed: ${e?.message ?? String(e)}`, { id: t });
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   const exportCsv = () => {
     if (recipients.length === 0) return;
