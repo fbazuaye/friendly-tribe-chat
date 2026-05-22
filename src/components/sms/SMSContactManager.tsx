@@ -137,24 +137,45 @@ export function SMSContactManager() {
   const processRows = async (headers: string[], dataRows: string[][]) => {
     if (!organizationId || !user) return;
 
-    const header = headers.map((h) => h.toLowerCase().trim());
-    const phoneIdx = header.findIndex((h) => h.includes("phone") || h.includes("mobile") || h.includes("tel") || h.includes("number"));
-    const nameIdx = header.findIndex((h) => h.includes("name") || h.includes("full"));
-    const emailIdx = header.findIndex((h) => h.includes("email") || h.includes("mail"));
+    // Strip BOM from first header cell (Excel CSVs)
+    if (headers.length > 0) headers[0] = (headers[0] || "").replace(/^\uFEFF/, "");
 
-    if (phoneIdx === -1) {
-      toast.error("File must have a column with 'phone', 'mobile', or 'number' in the header");
-      return;
+    const header = headers.map((h) => (h || "").toLowerCase().trim());
+    let phoneIdx = header.findIndex((h) =>
+      h.includes("phone") || h.includes("mobile") || h.includes("tel") ||
+      h.includes("number") || h.includes("msisdn") || h.includes("cell") ||
+      h.includes("contact") || h.includes("whatsapp") || h.includes("gsm") ||
+      h === "no." || h === "#"
+    );
+    let nameIdx = header.findIndex((h) => h.includes("name") || h.includes("full"));
+    let emailIdx = header.findIndex((h) => h.includes("email") || h.includes("mail"));
+
+    // Detect headerless file: first row's first cell parses as a phone, OR no phone column found
+    let allRows = dataRows;
+    const headerLooksLikePhone = !!normalizePhoneE164(headers[0]?.trim());
+
+    if (headerLooksLikePhone || phoneIdx === -1) {
+      // Treat as headerless — prepend the "header" row back as data
+      allRows = [headers.map((h) => String(h ?? "")), ...dataRows];
+      phoneIdx = 0;
+      const sample = allRows.find((r) => r.some((c) => c)) || [];
+      nameIdx = sample.length > 1 && !sample[1]?.includes("@") && !normalizePhoneE164(sample[1]) ? 1 : -1;
+      emailIdx = sample.findIndex((c) => c?.includes("@"));
     }
 
     const rows: any[] = [];
     let skipped = 0;
+    let firstSkipSample = "";
 
-    for (const cols of dataRows) {
+    for (const cols of allRows) {
       const phone = cols[phoneIdx]?.trim();
       if (!phone) { skipped++; continue; }
       const normalized = normalizePhoneE164(phone);
-      if (!normalized) { skipped++; continue; }
+      if (!normalized) {
+        skipped++;
+        if (!firstSkipSample) firstSkipSample = phone;
+        continue;
+      }
       rows.push({
         organization_id: organizationId,
         phone_number: normalized,
@@ -164,8 +185,10 @@ export function SMSContactManager() {
       });
     }
 
+    console.log("[SMS Import]", { total: allRows.length, valid: rows.length, skipped, firstSkipSample, phoneIdx, nameIdx, emailIdx });
+
     if (rows.length === 0) {
-      toast.error("No valid contacts found in file");
+      toast.error(`No valid phone numbers found${firstSkipSample ? ` (e.g. "${firstSkipSample}")` : ""}. Use formats like +2348031234567 or 08031234567.`);
       return;
     }
 
@@ -179,7 +202,7 @@ export function SMSContactManager() {
       else console.error("Import error:", error);
     }
 
-    toast.success(`${imported} contact(s) imported${skipped > 0 ? `, ${skipped} skipped` : ""}`);
+    toast.success(`Imported ${imported} contact(s)${skipped > 0 ? `, skipped ${skipped} invalid` : ""}`);
     fetchContacts();
   };
 
@@ -191,10 +214,10 @@ export function SMSContactManager() {
     try {
       const ext = file.name.split(".").pop()?.toLowerCase();
 
-      if (ext === "csv") {
+      if (ext === "csv" || ext === "txt") {
         const text = await file.text();
         const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l);
-        if (lines.length < 2) { toast.error("File is empty or has no data rows"); return; }
+        if (lines.length < 1) { toast.error("File is empty"); return; }
         const headers = parseCSVLine(lines[0]);
         const dataRows = lines.slice(1).map(parseCSVLine);
         await processRows(headers, dataRows);
@@ -203,9 +226,9 @@ export function SMSContactManager() {
         const workbook = XLSX.read(buffer, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const json: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-        if (json.length < 2) { toast.error("File is empty or has no data rows"); return; }
-        const headers = json[0].map(String);
-        const dataRows = json.slice(1).map((row) => row.map(String));
+        if (json.length < 1) { toast.error("File is empty"); return; }
+        const headers = json[0].map((v) => String(v ?? ""));
+        const dataRows = json.slice(1).map((row) => row.map((v) => String(v ?? "")));
         await processRows(headers, dataRows);
       } else {
         toast.error("Unsupported file format. Please use .csv or .xlsx");
