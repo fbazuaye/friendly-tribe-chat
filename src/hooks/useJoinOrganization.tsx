@@ -76,11 +76,28 @@ export function useJoinOrganization() {
         console.error("Error creating user role:", roleError);
       }
 
-      // Note: Token allocation is handled by admins, not during self-registration
+      // 4. Grant welcome tokens (non-blocking — falls back to 0 if wallet is empty)
+      let grantedTokens = 0;
+      try {
+        const { data: granted, error: grantError } = await supabase.rpc(
+          "grant_welcome_tokens",
+          { _user_id: user.id, _org_id: org.id, _amount: 500 }
+        );
+        if (grantError) {
+          console.error("Welcome token grant failed:", grantError);
+        } else {
+          grantedTokens = Number(granted) || 0;
+        }
+      } catch (e) {
+        console.error("Unexpected welcome token grant error:", e);
+      }
 
       toast({
         title: "Welcome!",
-        description: `You've joined ${org.name}`,
+        description:
+          grantedTokens > 0
+            ? `You've joined ${org.name} with ${grantedTokens} tokens to get started.`
+            : `You've joined ${org.name}`,
       });
 
       // 5. Redirect to chats

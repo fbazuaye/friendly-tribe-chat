@@ -1097,6 +1097,10 @@ export type Database = {
         Args: { _from: string; _org_id: string; _to: string }
         Returns: Json
       }
+      grant_welcome_tokens: {
+        Args: { _amount?: number; _org_id: string; _user_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _org_id: string
